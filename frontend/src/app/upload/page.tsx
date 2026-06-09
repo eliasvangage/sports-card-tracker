@@ -23,7 +23,8 @@ type CardDraft = {
   purchasePrice: string;
   salePrice: string;
   saleStatus: "Holding" | "Listed" | "Sold";
-  frameStyle: "Card" | "PSA" | "BGS";
+  frameStyle: "Card" | "Gradient" | "Sunset" | "Stand";
+  borderStyle: "Soft" | "Chrome" | "Glow";
 };
 
 const sports = ["Basketball", "Baseball", "Football", "Hockey", "Soccer"];
@@ -31,7 +32,8 @@ const brands = ["Topps", "Panini", "Upper Deck", "Bowman", "Fleer", "Donruss"];
 const grades = ["Raw", "PSA 10", "PSA 9", "BGS 9.5", "BGS 9", "SGC 10", "SGC 9.5"];
 const statuses: CardStatus[] = ["Vaulted", "Wishlist", "For Trade"];
 const saleStatuses = ["Holding", "Listed", "Sold"] as const;
-const frameStyles = ["Card", "PSA", "BGS"] as const;
+const frameStyles = ["Card", "Gradient", "Sunset", "Stand"] as const;
+const borderStyles = ["Soft", "Chrome", "Glow"] as const;
 const colors = ["#ff4d1c", "#38bdf8", "#f59e0b", "#21c55d", "#8b5cf6", "#ef3f6b"];
 
 export default function UploadPage() {
@@ -41,7 +43,11 @@ export default function UploadPage() {
   const [batchBrand, setBatchBrand] = useState("Topps");
   const [batchCollection, setBatchCollection] = useState("Main Collection");
   const [batchGrade, setBatchGrade] = useState("Raw");
-  const [batchFrame, setBatchFrame] = useState<"Card" | "PSA" | "BGS">("Card");
+  const [batchFrame, setBatchFrame] =
+    useState<(typeof frameStyles)[number]>("Card");
+  const [batchBorder, setBatchBorder] = useState<"Soft" | "Chrome" | "Glow">(
+    "Soft",
+  );
   const [collections, setCollections] = useState<string[]>(() => {
     if (typeof window === "undefined") return ["Main Collection"];
     return JSON.parse(
@@ -76,6 +82,7 @@ export default function UploadPage() {
           salePrice: "",
           saleStatus: "Holding" as const,
           frameStyle: batchFrame,
+          borderStyle: batchBorder,
         };
       }),
     );
@@ -128,6 +135,7 @@ export default function UploadPage() {
       salePrice: draft.salePrice,
       saleStatus: draft.saleStatus,
       frameStyle: draft.frameStyle,
+      borderStyle: draft.borderStyle,
       imageUrl: draft.imageUrl,
     }));
 
@@ -152,27 +160,23 @@ export default function UploadPage() {
             Back to gallery
           </Link>
 
-          <button
-            onClick={saveDrafts}
-            disabled={drafts.length === 0}
-            className="h-9 rounded-md bg-[#ff4d1c] px-4 text-xs font-black text-white transition hover:bg-[#ff6a3d] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
-          >
-            Save to gallery
-          </button>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+            Upload Studio
+          </p>
         </div>
 
-        <section className="mt-5 grid gap-4 rounded-lg border border-white/10 bg-[#151b26] p-4 shadow-2xl lg:grid-cols-[1fr_360px]">
+        <section className="mt-5 grid gap-4 rounded-lg border border-white/10 bg-[#151b26] p-4 shadow-2xl lg:grid-cols-[1fr_380px]">
           <div>
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-[#ffb84d]">
-            Upload room
-          </p>
-          <h1 className="mt-1 text-3xl font-black tracking-normal">
-            Add cards fast
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-            Drop in card photos, let the filename fill the first draft, pick
-            clean values from dropdowns, then save them into your gallery.
-          </p>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#ffb84d]">
+              Step 1
+            </p>
+            <h1 className="mt-1 text-3xl font-black tracking-normal">
+              Set defaults, then drop images.
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+              Defaults apply to every image you add. Change individual cards in
+              the draft list before saving.
+            </p>
           </div>
 
           <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-white/20 bg-black/25 px-5 py-8 text-center transition hover:bg-white/5">
@@ -196,27 +200,10 @@ export default function UploadPage() {
           ) : null}
         </section>
 
-        <section className="mt-4 rounded-lg border border-white/10 bg-[#151b26] p-3">
-          <p className="text-sm font-black text-white">Collections</p>
-          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-            <input
-              value={newCollection}
-              onChange={(event) => setNewCollection(event.target.value)}
-              className="field"
-              placeholder="New collection name"
-            />
-            <button
-              onClick={addCollection}
-              className="h-9 rounded-md border border-white/10 bg-white/5 px-4 text-xs font-bold text-slate-200 hover:bg-white/10"
-            >
-              Add collection
-            </button>
-          </div>
-        </section>
-
-        <section className="mt-4 rounded-lg border border-white/10 bg-[#151b26] p-3">
-          <p className="text-sm font-black text-white">Batch defaults</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <section className="mt-4 grid gap-4 lg:grid-cols-[1fr_320px]">
+          <div className="rounded-lg border border-white/10 bg-[#151b26] p-3">
+            <p className="text-sm font-black text-white">Batch defaults</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             <select
               value={batchCollection}
               onChange={(event) => setBatchCollection(event.target.value)}
@@ -256,7 +243,7 @@ export default function UploadPage() {
             <select
               value={batchFrame}
               onChange={(event) =>
-                setBatchFrame(event.target.value as "Card" | "PSA" | "BGS")
+                setBatchFrame(event.target.value as (typeof frameStyles)[number])
               }
               className="field"
             >
@@ -264,15 +251,59 @@ export default function UploadPage() {
                 <option key={frameStyle}>{frameStyle}</option>
               ))}
             </select>
+            <select
+              value={batchBorder}
+              onChange={(event) =>
+                setBatchBorder(event.target.value as "Soft" | "Chrome" | "Glow")
+              }
+              className="field"
+            >
+              {borderStyles.map((borderStyle) => (
+                <option key={borderStyle}>{borderStyle}</option>
+              ))}
+            </select>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-[#151b26] p-3">
+            <p className="text-sm font-black text-white">Collections</p>
+            <div className="mt-3 grid gap-2">
+              <input
+                value={newCollection}
+                onChange={(event) => setNewCollection(event.target.value)}
+                className="field"
+                placeholder="New collection name"
+              />
+              <button
+                onClick={addCollection}
+                className="h-9 rounded-md border border-white/10 bg-white/5 px-4 text-xs font-bold text-slate-200 hover:bg-white/10"
+              >
+                Add collection
+              </button>
+            </div>
           </div>
         </section>
 
         <section className="mt-5">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-xl font-black">Card drafts</h2>
-            <p className="text-xs font-bold text-slate-400">
-              {drafts.length} ready
-            </p>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#ffb84d]">
+                Step 2
+              </p>
+              <h2 className="text-xl font-black">Review drafts</h2>
+            </div>
+            <div className="flex items-center gap-3">
+              <p className="text-xs font-bold text-slate-400">
+                {drafts.length} ready
+              </p>
+              <button
+                onClick={saveDrafts}
+                disabled={drafts.length === 0}
+                className="h-9 rounded-md bg-[#ff4d1c] px-4 text-xs font-black text-white transition hover:bg-[#ff6a3d] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+              >
+                Save drafts
+              </button>
+            </div>
           </div>
 
           {drafts.length === 0 ? (
@@ -288,7 +319,7 @@ export default function UploadPage() {
                 >
                   <div>
                     <div
-                      className="aspect-[3/4] rounded-md bg-black/30 bg-cover bg-center shadow-2xl"
+                      className="aspect-[5/7] rounded-md bg-black/30 bg-cover bg-center shadow-2xl"
                       style={{ backgroundImage: `url(${draft.imageUrl})` }}
                     />
                     <p className="mt-2 truncate text-[11px] font-bold text-slate-500">
@@ -407,6 +438,20 @@ export default function UploadPage() {
                         >
                           {frameStyles.map((frameStyle) => (
                             <option key={frameStyle}>{frameStyle}</option>
+                          ))}
+                        </select>
+                      </Field>
+
+                      <Field label="Finish">
+                        <select
+                          value={draft.borderStyle}
+                          onChange={(event) =>
+                            updateDraft(draft.id, "borderStyle", event.target.value)
+                          }
+                          className="field"
+                        >
+                          {borderStyles.map((borderStyle) => (
+                            <option key={borderStyle}>{borderStyle}</option>
                           ))}
                         </select>
                       </Field>
