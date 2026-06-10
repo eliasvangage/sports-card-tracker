@@ -1,0 +1,292 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String       @id @default(cuid())
+  clerkId     String       @unique
+  email       String       @unique
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  profile     Profile?
+  cards       Card[]
+  collections Collection[]
+  follows     Follow[]     @relation("Follower")
+  followedBy  Follow[]     @relation("Following")
+  likes       Like[]
+  comments    Comment[]
+  reports     Report[]
+  wishlist    WishlistItem[]
+  feedEvents  FeedEvent[]
+  tradeInterests TradeInterest[]
+  notifications Notification[] @relation("NotificationUser")
+  triggeredNotifications Notification[] @relation("NotificationTrigger")
+}
+
+model Profile {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  handle       String   @unique
+  displayName  String
+  bio          String?
+  avatarUrl    String?
+  coverUrl     String?
+  public       Boolean  @default(true)
+  sellerLinks  Json?
+  favoritePCs  String[] @default([])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Collection {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  public      Boolean  @default(false)
+  theme       String   @default("Arena")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cards       Card[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model Card {
+  id             String       @id @default(cuid())
+  userId         String
+  collectionId   String?
+  player         String
+  sport          String
+  team           String?
+  year           String?
+  brand          String?
+  set            String?
+  cardNumber     String?
+  parallel       String?
+  grade          String?
+  gradingCompany String?
+  certNumber     String?
+  gradingFee     Decimal?     @db.Decimal(10, 2)
+  storageLocation String?
+  acquiredFrom   String?
+  acquiredAt     DateTime?
+  status         CardStatus   @default(VAULTED)
+  saleStatus     SaleStatus   @default(HOLDING)
+  estimatedValue Decimal?     @db.Decimal(10, 2)
+  purchasePrice  Decimal?     @db.Decimal(10, 2)
+  salePrice      Decimal?     @db.Decimal(10, 2)
+  imageUrl       String?
+  backImageUrl   String?
+  sourceUrl      String?
+  sourceName     String?
+  frameStyle     String       @default("Card")
+  borderStyle    String       @default("Soft")
+  color          String       @default("#ff5533")
+  imageX         Int          @default(50)
+  imageY         Int          @default(50)
+  imageZoom      Int          @default(100)
+  imageRotation  Float        @default(0)
+  notes          String?
+  public         Boolean      @default(false)
+  featured       Boolean      @default(false)
+  grail          Boolean      @default(false)
+  tags           String[]     @default([])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collection     Collection?  @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  saleLinks      SaleLink[]
+  priceSources   PriceSource[]
+  likes          Like[]
+  comments       Comment[]
+  reports        Report[]
+  wishlistedBy   WishlistItem[]
+  feedEvents     FeedEvent[]
+  tradeInterests TradeInterest[]
+  notifications  Notification[]
+
+  @@index([userId])
+  @@index([userId, public])
+  @@index([grail, userId])
+  @@index([collectionId])
+  @@index([player])
+}
+
+model SaleLink {
+  id        String   @id @default(cuid())
+  cardId    String
+  label     String
+  url       String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+}
+
+model PriceSource {
+  id         String   @id @default(cuid())
+  cardId     String
+  label      String
+  url        String?
+  value      Decimal? @db.Decimal(10, 2)
+  confidence String?
+  checkedAt  DateTime @default(now())
+  card       Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId])
+}
+
+model WishlistItem {
+  id          String   @id @default(cuid())
+  userId      String
+  cardId      String?
+  player      String
+  team        String?
+  year        String?
+  brand       String?
+  set         String?
+  targetPrice Decimal? @db.Decimal(10, 2)
+  notes       String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card        Card?    @relation(fields: [cardId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([cardId])
+}
+
+model FeedEvent {
+  id        String        @id @default(cuid())
+  userId    String
+  cardId    String?
+  type      FeedEventType
+  body      String?
+  public    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card      Card?         @relation(fields: [cardId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([cardId])
+  @@index([createdAt])
+  @@index([createdAt, public])
+}
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  userId    String
+  cardId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, cardId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  userId    String
+  cardId    String
+  body      String
+  hidden    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  reports   Report[]
+}
+
+model Report {
+  id             String   @id @default(cuid())
+  userId         String
+  cardId         String?
+  reportedUserId String?
+  commentId      String?
+  reason         String
+  status         String   @default("OPEN")
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card           Card?    @relation(fields: [cardId], references: [id], onDelete: SetNull)
+  comment        Comment? @relation(fields: [commentId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([cardId])
+  @@index([reportedUserId])
+  @@index([commentId])
+}
+
+model TradeInterest {
+  id        String   @id @default(cuid())
+  userId    String
+  cardId    String
+  message   String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, cardId])
+  @@index([cardId])
+}
+
+model Notification {
+  id                String           @id @default(cuid())
+  userId            String
+  triggeredByUserId String?
+  cardId            String?
+  type              NotificationType
+  read              Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+  user              User             @relation("NotificationUser", fields: [userId], references: [id], onDelete: Cascade)
+  triggeredByUser   User?            @relation("NotificationTrigger", fields: [triggeredByUserId], references: [id], onDelete: SetNull)
+  card              Card?            @relation(fields: [cardId], references: [id], onDelete: SetNull)
+
+  @@index([userId, read, createdAt])
+  @@index([triggeredByUserId])
+  @@index([cardId])
+}
+
+enum CardStatus {
+  VAULTED
+  WISHLIST
+  FOR_TRADE
+}
+
+enum SaleStatus {
+  HOLDING
+  LISTED
+  SOLD
+}
+
+enum FeedEventType {
+  CARD_ADDED
+  CARD_FEATURED
+  CARD_LIKED
+  CARD_WISHLISTED
+  COLLECTION_PUBLISHED
+  SALE_LINK_ADDED
+}
+
+enum NotificationType {
+  CARD_LIKED
+  USER_FOLLOWED
+  TRADE_INTEREST
+  COMMENT_ADDED
+}
