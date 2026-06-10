@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sports Card Showcase",
-  description: "A virtual gallery for sports card collections.",
+  title: "CardRoster",
+  description: "A polished inventory and showcase app for sports card collectors.",
 };
 
 export default function RootLayout({

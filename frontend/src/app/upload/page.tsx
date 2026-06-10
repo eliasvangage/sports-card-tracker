@@ -4,11 +4,14 @@ import Link from "next/link";
 import { useState } from "react";
 
 type CardStatus = "Vaulted" | "Wishlist" | "For Trade";
+type CardTag = "Rookie" | "Auto" | "Patch" | "Numbered" | "Favorite";
 
 type CardDraft = {
   id: string;
   fileName: string;
   imageUrl: string;
+  sourceUrl?: string;
+  sourceName?: string;
   player: string;
   sport: string;
   team: string;
@@ -25,6 +28,11 @@ type CardDraft = {
   saleStatus: "Holding" | "Listed" | "Sold";
   frameStyle: "Card" | "Gradient" | "Sunset" | "Stand";
   borderStyle: "Soft" | "Chrome" | "Glow";
+  tags: CardTag[];
+  imageX: number;
+  imageY: number;
+  imageZoom: number;
+  imageRotation: number;
 };
 
 const sports = ["Basketball", "Baseball", "Football", "Hockey", "Soccer"];
@@ -34,11 +42,20 @@ const statuses: CardStatus[] = ["Vaulted", "Wishlist", "For Trade"];
 const saleStatuses = ["Holding", "Listed", "Sold"] as const;
 const frameStyles = ["Card", "Gradient", "Sunset", "Stand"] as const;
 const borderStyles = ["Soft", "Chrome", "Glow"] as const;
+const cardTags: CardTag[] = ["Rookie", "Auto", "Patch", "Numbered", "Favorite"];
 const colors = ["#ff4d1c", "#38bdf8", "#f59e0b", "#21c55d", "#8b5cf6", "#ef3f6b"];
 
 export default function UploadPage() {
   const [drafts, setDrafts] = useState<CardDraft[]>([]);
   const [savedMessage, setSavedMessage] = useState("");
+  const [ebayUrl, setEbayUrl] = useState("");
+  const [importMessage, setImportMessage] = useState("");
+  const [isImporting, setIsImporting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showMoney] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("cardroster.showMoney") !== "false";
+  });
   const [batchSport, setBatchSport] = useState("Basketball");
   const [batchBrand, setBatchBrand] = useState("Topps");
   const [batchCollection, setBatchCollection] = useState("Main Collection");
@@ -54,19 +71,36 @@ export default function UploadPage() {
       localStorage.getItem("cardroster.collections") ?? "[\"Main Collection\"]",
     );
   });
+  const [savedCards] = useState<
+    Array<{
+      player?: string;
+      team?: string;
+      year?: string;
+      brand?: string;
+      set?: string;
+      sourceUrl?: string;
+    }>
+  >(() => {
+    if (typeof window === "undefined") return [];
+    return JSON.parse(localStorage.getItem("cardroster.cards") ?? "[]");
+  });
   const [newCollection, setNewCollection] = useState("");
+  const playerSuggestions = uniqueValues(savedCards.map((card) => card.player));
+  const teamSuggestions = uniqueValues(savedCards.map((card) => card.team));
+  const setSuggestions = uniqueValues(savedCards.map((card) => card.set));
 
   async function handleFiles(files: FileList | null) {
     if (!files) return;
 
     const nextDrafts: CardDraft[] = await Promise.all(
       Array.from(files).map(async (file, index) => {
-        const imageUrl = await readFile(file);
+        const imageUrl = await optimizeImageFile(file);
 
         return {
           id: crypto.randomUUID(),
           fileName: file.name,
           imageUrl,
+          sourceName: "Image upload",
           player: nameFromFile(file.name),
           sport: sportFromFile(file.name) || batchSport,
           team: "",
@@ -83,6 +117,11 @@ export default function UploadPage() {
           saleStatus: "Holding" as const,
           frameStyle: batchFrame,
           borderStyle: batchBorder,
+          tags: tagGuesses(file.name),
+          imageX: 50,
+          imageY: 50,
+          imageZoom: 100,
+          imageRotation: 0,
         };
       }),
     );
@@ -91,7 +130,71 @@ export default function UploadPage() {
     setSavedMessage("");
   }
 
-  function updateDraft(id: string, field: keyof CardDraft, value: string) {
+  async function importEbayListing() {
+    const cleanUrl = ebayUrl.trim();
+    if (!cleanUrl || isImporting) return;
+
+    setIsImporting(true);
+    setImportMessage("");
+    setSavedMessage("");
+
+    try {
+      const response = await fetch(`/api/ebay/import?url=${encodeURIComponent(cleanUrl)}`);
+      const listing = await response.json();
+
+      if (!response.ok) {
+        throw new Error(listing.error ?? "Unable to import that eBay listing.");
+      }
+
+      if (!listing.imageUrl) {
+        throw new Error("That eBay listing did not return a card image.");
+      }
+
+      const title = listing.title ?? "";
+      const nextDraft: CardDraft = {
+        id: crypto.randomUUID(),
+        fileName: title || "eBay listing",
+        imageUrl: listing.imageUrl,
+        sourceUrl: listing.itemWebUrl ?? cleanUrl,
+        sourceName: "eBay",
+        player: playerFromTitle(title),
+        sport: sportFromTitle(title) || batchSport,
+        team: teamFromTitle(title),
+        year: yearFromFile(title),
+        brand: brandFromFile(title) || listing.brand || batchBrand,
+        set: setFromTitle(title),
+        status: "Vaulted",
+        grade: gradeFromTitle(title),
+        color: colors[drafts.length % colors.length],
+        collection: batchCollection || collections[0] || "Main Collection",
+        estimatedValue: showMoney ? (listing.price ?? "") : "",
+        purchasePrice: showMoney ? (listing.price ?? "") : "",
+        salePrice: "",
+        saleStatus: "Holding",
+        frameStyle: batchFrame,
+        borderStyle: batchBorder,
+        tags: tagGuesses(title),
+        imageX: 50,
+        imageY: 50,
+        imageZoom: 100,
+        imageRotation: 0,
+      };
+
+      setDrafts((currentDrafts) => [nextDraft, ...currentDrafts]);
+      setEbayUrl("");
+      setImportMessage("Listing imported. Review the draft before saving.");
+    } catch (error) {
+      setImportMessage(error instanceof Error ? error.message : "Unable to import that listing.");
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
+  function updateDraft(
+    id: string,
+    field: keyof CardDraft,
+    value: CardDraft[keyof CardDraft],
+  ) {
     setDrafts((currentDrafts) =>
       currentDrafts.map((draft) =>
         draft.id === id ? { ...draft, [field]: value } : draft,
@@ -113,12 +216,33 @@ export default function UploadPage() {
     setNewCollection("");
   }
 
-  function saveDrafts() {
-    const savedCards = JSON.parse(localStorage.getItem("cardroster.cards") ?? "[]");
+  async function saveDrafts() {
+    if (isSaving || drafts.length === 0) return;
+
+    setIsSaving(true);
+    setSavedMessage("");
+
+    try {
+      const savedCards = JSON.parse(localStorage.getItem("cardroster.cards") ?? "[]");
+      const compactSavedCards = await Promise.all(
+        savedCards.map(async (card: Record<string, unknown>) => ({
+          ...card,
+          imageUrl:
+            typeof card.imageUrl === "string"
+              ? await optimizeStoredImage(card.imageUrl)
+              : card.imageUrl,
+        })),
+      );
     const nextCollections = Array.from(
       new Set([...collections, ...drafts.map((draft) => draft.collection)]),
     );
-    const nextCards = drafts.map((draft) => ({
+    const compactDrafts = await Promise.all(
+      drafts.map(async (draft) => ({
+        ...draft,
+        imageUrl: await optimizeStoredImage(draft.imageUrl),
+      })),
+    );
+    const nextCards = compactDrafts.map((draft) => ({
       id: draft.id,
       player: draft.player || "Unnamed Card",
       sport: draft.sport,
@@ -137,16 +261,38 @@ export default function UploadPage() {
       frameStyle: draft.frameStyle,
       borderStyle: draft.borderStyle,
       imageUrl: draft.imageUrl,
+      sourceUrl: draft.sourceUrl,
+      sourceName: draft.sourceName,
+      tags: draft.tags,
+      imageX: draft.imageX,
+      imageY: draft.imageY,
+      imageZoom: draft.imageZoom,
+      imageRotation: draft.imageRotation,
     }));
 
     localStorage.setItem(
       "cardroster.cards",
-      JSON.stringify([...nextCards, ...savedCards]),
+      JSON.stringify([...nextCards, ...compactSavedCards]),
     );
     localStorage.setItem("cardroster.collections", JSON.stringify(nextCollections));
     setCollections(nextCollections);
     setDrafts([]);
     setSavedMessage(`${nextCards.length} card${nextCards.length === 1 ? "" : "s"} saved to gallery.`);
+    } catch (error) {
+      const isQuotaError =
+        error instanceof DOMException &&
+        (error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED");
+
+      setSavedMessage(
+        isQuotaError
+          ? "Browser storage is full. Remove a few older local cards or wait for database image storage before saving more large uploads."
+          : error instanceof Error
+            ? error.message
+            : "Unable to save cards.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -165,33 +311,71 @@ export default function UploadPage() {
           </p>
         </div>
 
-        <section className="mt-5 grid gap-4 rounded-lg border border-white/10 bg-[#151b26] p-4 shadow-2xl lg:grid-cols-[1fr_380px]">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#ffb84d]">
-              Step 1
-            </p>
-            <h1 className="mt-1 text-3xl font-black tracking-normal">
-              Set defaults, then drop images.
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-              Defaults apply to every image you add. Change individual cards in
-              the draft list before saving.
-            </p>
-          </div>
+        <section className="relative mt-5 overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.10),transparent_30%),radial-gradient(circle_at_82%_0%,rgba(56,189,248,0.12),transparent_28%),linear-gradient(135deg,rgba(21,27,38,0.96),rgba(10,14,20,0.96))] p-4 shadow-2xl">
+          <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#ff4d1c,#f8e71c,#20e3b2,#38bdf8,#ec4899)]" />
+          <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-[#ffb84d]">
+                CardRoster import
+              </p>
+              <h1 className="mt-1 max-w-3xl text-3xl font-black leading-tight tracking-normal sm:text-4xl">
+                Drop, detect, crop, and save.
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-300">
+                Upload card photos now, then use eBay listing import once your developer access is ready.
+              </p>
+              <div className="mt-5 grid max-w-2xl gap-2 sm:grid-cols-3">
+                <UploadStat label="Drafts" value={drafts.length.toString()} />
+                <UploadStat label="Autofill" value="On" />
+                <UploadStat label="Ready" value={drafts.length.toString()} />
+              </div>
+            </div>
 
-          <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-white/20 bg-black/25 px-5 py-8 text-center transition hover:bg-white/5">
-            <span className="text-base font-black">Drop card images here</span>
-            <span className="mt-1 text-xs text-slate-400">
-              or click to browse your files
-            </span>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(event) => handleFiles(event.target.files)}
-            />
-          </label>
+            <div className="grid gap-3">
+              <label className="flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-white/20 bg-black/25 px-5 py-8 text-center transition hover:-translate-y-0.5 hover:border-white/35 hover:bg-white/5">
+                <span className="grid size-12 place-items-center rounded-2xl border border-white/10 bg-white/5 text-lg font-black text-white">
+                  +
+                </span>
+                <span className="mt-3 text-base font-black">Drop card images</span>
+                <span className="mt-1 text-xs text-slate-400">
+                  Previewed in the same card frame used in your gallery
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => handleFiles(event.target.files)}
+                />
+              </label>
+
+              <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  eBay listing import
+                </p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <input
+                    value={ebayUrl}
+                    onChange={(event) => setEbayUrl(event.target.value)}
+                    className="field"
+                    placeholder="Paste listing link"
+                  />
+                  <button
+                    onClick={importEbayListing}
+                    disabled={!ebayUrl.trim() || isImporting}
+                    className="h-9 rounded-md bg-white px-4 text-xs font-black text-[#111722] transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+                  >
+                    {isImporting ? "Importing" : "Import"}
+                  </button>
+                </div>
+                {importMessage ? (
+                  <p className="mt-2 text-xs font-bold text-slate-300">
+                    {importMessage}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
 
           {savedMessage ? (
             <div className="lg:col-span-2 rounded-lg border border-[#21c55d]/30 bg-[#21c55d]/10 p-3 text-sm font-bold text-[#86efac]">
@@ -201,9 +385,22 @@ export default function UploadPage() {
         </section>
 
         <section className="mt-4 grid gap-4 lg:grid-cols-[1fr_320px]">
-          <div className="rounded-lg border border-white/10 bg-[#151b26] p-3">
-            <p className="text-sm font-black text-white">Batch defaults</p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-xl border border-white/10 bg-[#151b26] p-3 shadow-xl">
+            <details>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                    Fast fill
+                  </p>
+                  <p className="mt-1 text-sm font-black text-white">
+                    Defaults for new uploads
+                  </p>
+                </div>
+                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
+                  Optional
+                </span>
+              </summary>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             <select
               value={batchCollection}
               onChange={(event) => setBatchCollection(event.target.value)}
@@ -262,11 +459,14 @@ export default function UploadPage() {
                 <option key={borderStyle}>{borderStyle}</option>
               ))}
             </select>
-            </div>
+              </div>
+            </details>
           </div>
 
-          <div className="rounded-lg border border-white/10 bg-[#151b26] p-3">
-            <p className="text-sm font-black text-white">Collections</p>
+          <div className="rounded-xl border border-white/10 bg-[#151b26] p-3 shadow-xl">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+              Collections
+            </p>
             <div className="mt-3 grid gap-2">
               <input
                 value={newCollection}
@@ -285,6 +485,21 @@ export default function UploadPage() {
         </section>
 
         <section className="mt-5">
+          <datalist id="player-suggestions">
+            {playerSuggestions.map((item) => (
+              <option key={item} value={item} />
+            ))}
+          </datalist>
+          <datalist id="team-suggestions">
+            {teamSuggestions.map((item) => (
+              <option key={item} value={item} />
+            ))}
+          </datalist>
+          <datalist id="set-suggestions">
+            {setSuggestions.map((item) => (
+              <option key={item} value={item} />
+            ))}
+          </datalist>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.2em] text-[#ffb84d]">
@@ -298,36 +513,61 @@ export default function UploadPage() {
               </p>
               <button
                 onClick={saveDrafts}
-                disabled={drafts.length === 0}
+                disabled={drafts.length === 0 || isSaving}
                 className="h-9 rounded-md bg-[#ff4d1c] px-4 text-xs font-black text-white transition hover:bg-[#ff6a3d] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
               >
-                Save drafts
+                {isSaving ? "Saving" : "Save drafts"}
               </button>
             </div>
           </div>
 
           {drafts.length === 0 ? (
-            <div className="rounded-lg border border-white/10 bg-[#151b26] p-7 text-center text-sm text-slate-400">
-              No drafts yet. Upload card photos to start.
+            <div className="rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(21,27,38,0.9),rgba(10,14,20,0.95))] p-8 text-center text-sm text-slate-400">
+              Drop images or import an eBay listing to start.
             </div>
           ) : (
-            <div className="grid gap-3 xl:grid-cols-2">
+            <div className="grid gap-4 xl:grid-cols-2">
               {drafts.map((draft) => (
                 <article
                   key={draft.id}
-                  className="grid gap-3 rounded-lg border border-white/10 bg-[#151b26] p-3 shadow-xl sm:grid-cols-[132px_1fr]"
+                  className="grid gap-4 rounded-2xl border border-white/10 bg-[linear-gradient(145deg,rgba(21,27,38,0.98),rgba(11,15,22,0.98))] p-3 shadow-2xl sm:grid-cols-[190px_1fr]"
                 >
                   <div>
-                    <div
-                      className="aspect-[5/7] rounded-md bg-black/30 bg-cover bg-center shadow-2xl"
-                      style={{ backgroundImage: `url(${draft.imageUrl})` }}
-                    />
-                    <p className="mt-2 truncate text-[11px] font-bold text-slate-500">
-                      {draft.fileName}
-                    </p>
+                    <div className="h-[280px] rounded-xl border border-white/10 bg-black/25 p-3 shadow-2xl">
+                      <UploadCardPreview draft={draft} />
+                    </div>
+                    <div className="mt-2 rounded-md border border-white/10 bg-black/20 px-2 py-1.5">
+                      <p className="truncate text-[11px] font-black text-slate-300">
+                        {draft.sourceName ?? "Image upload"}
+                      </p>
+                      <p className="mt-0.5 truncate text-[10px] font-bold text-slate-500">
+                        {draft.fileName}
+                      </p>
+                    </div>
                   </div>
 
                   <div>
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                          Review card
+                        </p>
+                        <p className="mt-0.5 text-sm font-black text-white">
+                          {draft.player || "Needs player"}
+                        </p>
+                        {duplicateWarning(draft, savedCards, drafts) ? (
+                          <p className="mt-1 rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[10px] font-black text-amber-100">
+                            Possible duplicate
+                          </p>
+                        ) : null}
+                      </div>
+                      <button
+                        onClick={() => removeDraft(draft.id)}
+                        className="h-8 rounded-md border border-white/10 bg-white/5 px-3 text-xs font-bold text-slate-200 hover:bg-white/10"
+                      >
+                        Remove
+                      </button>
+                    </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <Field label="Player">
                         <input
@@ -336,6 +576,7 @@ export default function UploadPage() {
                             updateDraft(draft.id, "player", event.target.value)
                           }
                           className="field"
+                          list="player-suggestions"
                         />
                       </Field>
 
@@ -361,6 +602,7 @@ export default function UploadPage() {
                           }
                           placeholder="Team name"
                           className="field"
+                          list="team-suggestions"
                         />
                       </Field>
 
@@ -411,6 +653,7 @@ export default function UploadPage() {
                           }
                           placeholder="Base Set, Rookie, Prizm..."
                           className="field"
+                          list="set-suggestions"
                         />
                       </Field>
 
@@ -470,68 +713,138 @@ export default function UploadPage() {
                         </select>
                       </Field>
 
-                      <Field label="Value">
-                        <input
-                          value={draft.estimatedValue}
-                          onChange={(event) =>
-                            updateDraft(
-                              draft.id,
-                              "estimatedValue",
-                              event.target.value,
-                            )
-                          }
-                          placeholder="Estimated value"
-                          className="field"
-                        />
+                      <Field label="Tags">
+                        <div className="flex flex-wrap gap-2">
+                          {cardTags.map((tag) => {
+                            const active = draft.tags.includes(tag);
+
+                            return (
+                              <button
+                                key={tag}
+                                type="button"
+                                onClick={() =>
+                                  updateDraft(draft.id, "tags", toggleDraftTag(draft.tags, tag))
+                                }
+                                className={`h-8 rounded-full px-3 text-[11px] font-black transition ${
+                                  active
+                                    ? "bg-white text-[#111722]"
+                                    : "border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+                                }`}
+                              >
+                                {tag}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </Field>
 
-                      <Field label="Cost">
-                        <input
-                          value={draft.purchasePrice}
-                          onChange={(event) =>
-                            updateDraft(
-                              draft.id,
-                              "purchasePrice",
-                              event.target.value,
-                            )
-                          }
-                          placeholder="Purchase price"
-                          className="field"
-                        />
-                      </Field>
+                      <div className="rounded-lg border border-white/10 bg-black/20 p-3 sm:col-span-2">
+                        <p className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                          Crop position
+                        </p>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <RangeField
+                            label="Horizontal"
+                            value={draft.imageX}
+                            onChange={(value) => updateDraft(draft.id, "imageX", value)}
+                          />
+                          <RangeField
+                            label="Vertical"
+                            value={draft.imageY}
+                            onChange={(value) => updateDraft(draft.id, "imageY", value)}
+                          />
+                          <RangeField
+                            label="Zoom"
+                            min={100}
+                            max={150}
+                            value={draft.imageZoom}
+                            onChange={(value) => updateDraft(draft.id, "imageZoom", value)}
+                          />
+                          <RangeField
+                            label="Rotate"
+                            min={-180}
+                            max={180}
+                            value={draft.imageRotation}
+                            onChange={(value) => updateDraft(draft.id, "imageRotation", value)}
+                          />
+                        </div>
+                        <div className="mt-3 grid grid-cols-3 gap-2">
+                          <button type="button" onClick={() => updateDraft(draft.id, "imageRotation", rotateValue(draft.imageRotation, -90))} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                            Left
+                          </button>
+                          <button type="button" onClick={() => updateDraft(draft.id, "imageRotation", rotateValue(draft.imageRotation, 90))} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                            Right
+                          </button>
+                          <button type="button" onClick={() => {
+                            updateDraft(draft.id, "imageX", 50);
+                            updateDraft(draft.id, "imageY", 50);
+                            updateDraft(draft.id, "imageZoom", 100);
+                            updateDraft(draft.id, "imageRotation", 0);
+                          }} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                            Reset
+                          </button>
+                        </div>
+                      </div>
 
-                      <Field label="Sale">
-                        <select
-                          value={draft.saleStatus}
-                          onChange={(event) =>
-                            updateDraft(draft.id, "saleStatus", event.target.value)
-                          }
-                          className="field"
-                        >
-                          {saleStatuses.map((saleStatus) => (
-                            <option key={saleStatus}>{saleStatus}</option>
-                          ))}
-                        </select>
-                      </Field>
+                      {showMoney ? (
+                        <>
+                          <Field label="Value">
+                            <input
+                              value={draft.estimatedValue}
+                              onChange={(event) =>
+                                updateDraft(
+                                  draft.id,
+                                  "estimatedValue",
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="Estimated value"
+                              className="field"
+                            />
+                          </Field>
 
-                      <Field label="Sold for">
-                        <input
-                          value={draft.salePrice}
-                          onChange={(event) =>
-                            updateDraft(draft.id, "salePrice", event.target.value)
-                          }
-                          placeholder="Sale price"
-                          className="field"
-                        />
-                      </Field>
+                          <Field label="Cost">
+                            <input
+                              value={draft.purchasePrice}
+                              onChange={(event) =>
+                                updateDraft(
+                                  draft.id,
+                                  "purchasePrice",
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="Purchase price"
+                              className="field"
+                            />
+                          </Field>
+
+                          <Field label="Sale">
+                            <select
+                              value={draft.saleStatus}
+                              onChange={(event) =>
+                                updateDraft(draft.id, "saleStatus", event.target.value)
+                              }
+                              className="field"
+                            >
+                              {saleStatuses.map((saleStatus) => (
+                                <option key={saleStatus}>{saleStatus}</option>
+                              ))}
+                            </select>
+                          </Field>
+
+                          <Field label="Sold for">
+                            <input
+                              value={draft.salePrice}
+                              onChange={(event) =>
+                                updateDraft(draft.id, "salePrice", event.target.value)
+                              }
+                              placeholder="Sale price"
+                              className="field"
+                            />
+                          </Field>
+                        </>
+                      ) : null}
                     </div>
-
-                    <button
-                      onClick={() => removeDraft(draft.id)}
-                      className="mt-3 h-9 rounded-md border border-white/10 bg-white/5 px-3 text-xs font-bold text-slate-200 hover:bg-white/10"
-                    >
-                      Remove draft
-                    </button>
                   </div>
                 </article>
               ))}
@@ -540,6 +853,51 @@ export default function UploadPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+function UploadCardPreview({ draft }: { draft: CardDraft }) {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <div
+        className={`aspect-[5/7] h-full max-h-full rounded-2xl p-2.5 shadow-[0_18px_42px_rgba(0,0,0,0.42)] ${
+          draft.frameStyle === "Gradient"
+            ? "bg-[linear-gradient(135deg,#ff8a3d,#f8e71c,#20e3b2,#38bdf8,#ec4899)]"
+            : draft.frameStyle === "Sunset"
+              ? "bg-[linear-gradient(135deg,#ff8a3d,#f8e71c,#20e3b2,#38bdf8)]"
+              : draft.frameStyle === "Stand"
+                ? "border border-white/25 bg-white/10"
+                : "border border-white/15 bg-[#1b2330]"
+        }`}
+        style={draft.frameStyle === "Card" ? { borderColor: draft.color } : undefined}
+      >
+        <div
+          className={`h-full overflow-hidden rounded-xl bg-[#0d121b] ${
+            draft.borderStyle === "Glow"
+              ? "ring-2 ring-white/30"
+              : draft.borderStyle === "Chrome"
+                ? "ring-2 ring-slate-300/40"
+                : "ring-1 ring-black/50"
+          }`}
+          style={{
+            boxShadow:
+              draft.borderStyle === "Glow"
+                ? `0 0 28px ${draft.color}66`
+                : undefined,
+          }}
+        >
+          <div
+            className="h-full bg-cover bg-center"
+            style={{
+              backgroundImage: `url(${draft.imageUrl})`,
+              backgroundPosition: `${draft.imageX}% ${draft.imageY}%`,
+              backgroundSize: `${draft.imageZoom}%`,
+              transform: `rotate(${draft.imageRotation}deg)`,
+            }}
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -558,6 +916,143 @@ function Field({
       {children}
     </label>
   );
+}
+
+function UploadStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/25 p-3">
+      <p className="truncate text-lg font-black text-white">{value}</p>
+      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function RangeField({
+  label,
+  max = 100,
+  min = 0,
+  onChange,
+  value,
+}: {
+  label: string;
+  max?: number;
+  min?: number;
+  onChange: (value: number) => void;
+  value: number;
+}) {
+  return (
+    <label>
+      <div className="mb-1 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+        <span>{label}</span>
+        <span>{value}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="w-full accent-white"
+      />
+    </label>
+  );
+}
+
+function toggleDraftTag(tags: CardTag[], tag: CardTag) {
+  return tags.includes(tag)
+    ? tags.filter((item) => item !== tag)
+    : [...tags, tag];
+}
+
+function rotateValue(current: number, change: number) {
+  const next = ((current + change) % 360 + 360) % 360;
+  return next > 180 ? next - 360 : next;
+}
+
+function tagGuesses(value: string) {
+  const lower = value.toLowerCase();
+  const tags: CardTag[] = [];
+
+  if (/\b(rookie| rc )\b/.test(lower)) tags.push("Rookie");
+  if (/\b(auto|autograph)\b/.test(lower)) tags.push("Auto");
+  if (/\b(patch|relic|jersey)\b/.test(lower)) tags.push("Patch");
+  if (/#\d+|\bnumbered\b|\b\/\d+\b/.test(lower)) tags.push("Numbered");
+
+  return tags;
+}
+
+function uniqueValues(values: Array<string | undefined>) {
+  return Array.from(
+    new Set(values.map((value) => value?.trim()).filter(Boolean) as string[]),
+  ).slice(0, 80);
+}
+
+function duplicateWarning(
+  draft: CardDraft,
+  savedCards: Array<{
+    player?: string;
+    year?: string;
+    brand?: string;
+    set?: string;
+    sourceUrl?: string;
+  }>,
+  drafts: CardDraft[],
+) {
+  const key = cardIdentity(draft);
+  const savedDuplicate = savedCards.some((card) => {
+    if (draft.sourceUrl && card.sourceUrl === draft.sourceUrl) return true;
+    return cardIdentity(card) === key;
+  });
+  const draftDuplicate =
+    drafts.filter((item) => cardIdentity(item) === key).length > 1;
+
+  return savedDuplicate || draftDuplicate;
+}
+
+function cardIdentity(card: {
+  player?: string;
+  year?: string;
+  brand?: string;
+  set?: string;
+}) {
+  return [card.player, card.year, card.brand, card.set]
+    .map((value) => value?.trim().toLowerCase() ?? "")
+    .join("|");
+}
+
+async function optimizeImageFile(file: File) {
+  return optimizeStoredImage(await readFile(file));
+}
+
+async function optimizeStoredImage(source: string) {
+  if (!source.startsWith("data:image/")) return source;
+  if (source.length < 450_000) return source;
+
+  const image = await loadImage(source);
+  const maxLongSide = 900;
+  const scale = Math.min(1, maxLongSide / Math.max(image.width, image.height));
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext("2d");
+  if (!context) return source;
+
+  context.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", 0.78);
+}
+
+function loadImage(source: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = source;
+  });
 }
 
 function readFile(file: File) {
@@ -580,6 +1075,71 @@ function nameFromFile(fileName: string) {
     .trim();
 
   return cleanName
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function playerFromTitle(title: string) {
+  const cleanTitle = title
+    .replace(/\b(19|20)\d{2}\b/g, "")
+    .replace(/\b(topps|panini|upper deck|bowman|fleer|donruss)\b/gi, "")
+    .replace(/\b(chrome|prizm|optic|select|mosaic|rookie|rc|auto|autograph|refractor|holo|silver|card|graded|psa|bgs|sgc|gem|mint)\b/gi, "")
+    .replace(/\b\d+(\.\d+)?\b/g, "")
+    .replace(/[#:/|()[\]-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return titleCase(cleanTitle.split(" ").slice(0, 3).join(" "));
+}
+
+function sportFromTitle(title: string) {
+  return sportFromFile(title);
+}
+
+function teamFromTitle(title: string) {
+  const teams = [
+    "Raptors",
+    "Reds",
+    "Steelers",
+    "Lakers",
+    "Yankees",
+    "Maple Leafs",
+    "Blue Jays",
+    "Dodgers",
+    "Celtics",
+    "Warriors",
+  ];
+
+  return teams.find((team) => title.toLowerCase().includes(team.toLowerCase())) ?? "";
+}
+
+function setFromTitle(title: string) {
+  const matches = [
+    "Chrome",
+    "Prizm",
+    "Optic",
+    "Select",
+    "Mosaic",
+    "Refractor",
+    "Holo",
+    "Rookie",
+    "Base Set",
+  ];
+
+  return matches.filter((match) => title.toLowerCase().includes(match.toLowerCase())).join(" ");
+}
+
+function gradeFromTitle(title: string) {
+  const grade = title.match(/\b(PSA|BGS|SGC)\s?(10|9\.5|9|8\.5|8)\b/i);
+  if (!grade) return "Raw";
+
+  return `${grade[1].toUpperCase()} ${grade[2]}`;
+}
+
+function titleCase(value: string) {
+  return value
     .split(" ")
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())

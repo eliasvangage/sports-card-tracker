@@ -9,6 +9,17 @@ type DisplayMode = "Grid" | "Showcase" | "Compact";
 type BorderStyle = "Soft" | "Chrome" | "Glow";
 type FrameStyle = "Card" | "Gradient" | "Sunset" | "Stand";
 type SortMode = "Newest" | "Player" | "Year";
+type CardTag = "Rookie" | "Auto" | "Patch" | "Numbered" | "Favorite";
+type StudioTab = "Info" | "Style" | "Crop" | "Value" | "Lookup";
+type AppSection =
+  | "Home"
+  | "Feed"
+  | "Collection"
+  | "Tools"
+  | "Insights"
+  | "Trade"
+  | "Wishlist"
+  | "Profile";
 
 type Card = {
   id: string;
@@ -18,18 +29,47 @@ type Card = {
   year: string;
   brand: string;
   set: string;
+  cardNumber?: string;
+  parallel?: string;
   status: "Vaulted" | "Wishlist" | "For Trade";
   grade: string;
+  gradingCompany?: string;
+  certNumber?: string;
+  gradingFee?: string;
+  storageLocation?: string;
   color: string;
   collection: string;
   imageUrl?: string;
+  sourceUrl?: string;
+  sourceName?: string;
   estimatedValue?: string;
   purchasePrice?: string;
   salePrice?: string;
   saleStatus?: "Holding" | "Listed" | "Sold";
   frameStyle?: FrameStyle;
   borderStyle?: BorderStyle;
+  tags?: CardTag[];
+  imageX?: number;
+  imageY?: number;
+  imageZoom?: number;
+  imageRotation?: number;
+  notes?: string;
+  acquiredFrom?: string;
+  acquiredAt?: string;
+  targetPrice?: string;
+  isChase?: boolean;
 };
+
+type CollectorProfile = {
+  handle: string;
+  bio: string;
+  avatarInitials: string;
+  favoritePCs: string[];
+  publicCollections: string[];
+};
+
+const cardTags: CardTag[] = ["Rookie", "Auto", "Patch", "Numbered", "Favorite"];
+const appSections: AppSection[] = ["Home", "Feed", "Collection", "Trade", "Tools", "Wishlist", "Profile"];
 
 const themes: Record<ThemeName, { bg: string; panel: string; accent: string }> = {
   Arena: {
@@ -47,6 +87,14 @@ const themes: Record<ThemeName, { bg: string; panel: string; accent: string }> =
     panel: "bg-[#19180f]",
     accent: "#d7b46a",
   },
+};
+
+const defaultCollectorProfile: CollectorProfile = {
+  handle: "cardroster",
+  bio: "Collector vault, trade board, and favorite pickups.",
+  avatarInitials: "CR",
+  favoritePCs: ["Rookie cards", "Autos", "Trade bait"],
+  publicCollections: ["Main Collection"],
 };
 
 export default function Home() {
@@ -75,7 +123,13 @@ export default function Home() {
   const [sport, setSport] = useState("All");
   const [status, setStatus] = useState("All");
   const [collection, setCollection] = useState("All");
+  const [tagFilter, setTagFilter] = useState<"All" | CardTag>("All");
   const [newCollection, setNewCollection] = useState("");
+  const [studioTab, setStudioTab] = useState<StudioTab>("Info");
+  const [detailId, setDetailId] = useState("");
+  const [showcaseOpen, setShowcaseOpen] = useState(false);
+  const [newChasePlayer, setNewChasePlayer] = useState("");
+  const [activeSection, setActiveSection] = useState<AppSection>("Home");
   const [savedCollections, setSavedCollections] = useState<string[]>(() => {
     if (typeof window === "undefined") return ["Main Collection"];
     return JSON.parse(
@@ -83,8 +137,12 @@ export default function Home() {
     );
   });
   const [collectionName, setCollectionName] = useState(() => {
-    if (typeof window === "undefined") return "Elias Vault";
-    return localStorage.getItem("cardroster.collectionName") ?? "Elias Vault";
+    if (typeof window === "undefined") return "CardRoster Vault";
+    return localStorage.getItem("cardroster.collectionName") ?? "CardRoster Vault";
+  });
+  const [collectorProfile, setCollectorProfile] = useState<CollectorProfile>(() => {
+    if (typeof window === "undefined") return defaultCollectorProfile;
+    return readCollectorProfile(localStorage.getItem("cardroster.profile"));
   });
   const [savedCards, setSavedCards] = useState<Card[]>(() => {
     if (typeof window === "undefined") return [];
@@ -93,6 +151,11 @@ export default function Home() {
       ...card,
       collection: card.collection ?? "Main Collection",
       frameStyle: readFrameStyle(card.frameStyle ?? null),
+      tags: sanitizeTags(card.tags),
+      imageX: card.imageX ?? 50,
+      imageY: card.imageY ?? 50,
+      imageZoom: card.imageZoom ?? 100,
+      imageRotation: card.imageRotation ?? 0,
     }));
   });
   const [selectedId, setSelectedId] = useState("");
@@ -104,6 +167,10 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem("cardroster.collectionName", collectionName);
   }, [collectionName]);
+
+  useEffect(() => {
+    localStorage.setItem("cardroster.profile", JSON.stringify(collectorProfile));
+  }, [collectorProfile]);
 
   useEffect(() => {
     localStorage.setItem("cardroster.theme", theme);
@@ -139,15 +206,25 @@ export default function Home() {
       new Set([...savedCollections, ...allCards.map((card) => card.collection)]),
     ),
   ];
-  const inventoryValue = allCards.reduce(
-    (total, card) => total + moneyValue(card.estimatedValue),
+  const activeCards = allCards.filter((card) => card.saleStatus !== "Sold");
+  const chaseCards = allCards.filter((card) => card.isChase);
+  const inventoryValue = activeCards.reduce(
+    (total, card) => total + cardValue(card),
+    0,
+  );
+  const costBasis = activeCards.reduce(
+    (total, card) => total + moneyValue(card.purchasePrice),
     0,
   );
   const soldValue = allCards.reduce(
     (total, card) => total + moneyValue(card.salePrice),
     0,
   );
-  const listedCount = allCards.filter((card) => card.saleStatus === "Listed").length;
+  const gradedCount = allCards.filter((card) => card.grade && card.grade !== "Raw").length;
+  const autoCount = allCards.filter((card) => card.tags?.includes("Auto")).length;
+  const numberedCount = allCards.filter((card) => card.tags?.includes("Numbered")).length;
+  const biggestCard = activeCards.toSorted((a, b) => cardValue(b) - cardValue(a))[0];
+  const portfolioGain = inventoryValue - costBasis;
 
   const filteredCards = useMemo(() => {
     const search = query.toLowerCase().trim();
@@ -168,8 +245,15 @@ export default function Home() {
       const matchesStatus = status === "All" || card.status === status;
       const matchesCollection =
         collection === "All" || card.collection === collection;
+      const matchesTag = tagFilter === "All" || card.tags?.includes(tagFilter);
 
-      return matchesSearch && matchesSport && matchesStatus && matchesCollection;
+      return (
+        matchesSearch &&
+        matchesSport &&
+        matchesStatus &&
+        matchesCollection &&
+        matchesTag
+      );
     });
 
     return matches.toSorted((a, b) => {
@@ -177,18 +261,19 @@ export default function Home() {
       if (sortMode === "Year") return b.year.localeCompare(a.year);
       return 0;
     });
-  }, [allCards, collection, query, sortMode, sport, status]);
+  }, [allCards, collection, query, sortMode, sport, status, tagFilter]);
 
   const selectedCard =
     allCards.find((card) => card.id === selectedId) ??
     filteredCards[0];
   const grailCard = allCards.find((card) => card.id === grailId) ?? allCards[0];
-
-  function cycleDisplayMode() {
-    const modes: DisplayMode[] = ["Grid", "Showcase", "Compact"];
-    const nextMode = modes[(modes.indexOf(displayMode) + 1) % modes.length];
-    setDisplayMode(nextMode);
-  }
+  const favoriteCards = allCards
+    .filter((card) => card.tags?.includes("Favorite") && card.id !== grailCard?.id)
+    .slice(0, 5);
+  const activeCollectionCards =
+    collection === "All"
+      ? allCards
+      : allCards.filter((card) => card.collection === collection);
 
   function deleteCard(id: string) {
     const nextCards = savedCards.filter((card) => card.id !== id);
@@ -205,6 +290,47 @@ export default function Home() {
     localStorage.setItem("cardroster.cards", JSON.stringify(nextCards));
   }
 
+  function exportCards() {
+    const headers = [
+      "player",
+      "sport",
+      "team",
+      "year",
+      "brand",
+      "set",
+      "cardNumber",
+      "parallel",
+      "status",
+      "grade",
+      "gradingCompany",
+      "certNumber",
+      "gradingFee",
+      "collection",
+      "storageLocation",
+      "estimatedValue",
+      "purchasePrice",
+      "salePrice",
+      "saleStatus",
+      "acquiredFrom",
+      "acquiredAt",
+      "sourceUrl",
+      "tags",
+      "notes",
+    ];
+    const rows = savedCards.map((card) =>
+      headers.map((header) => csvCell(card[header as keyof Card])),
+    );
+    const exportedAt = new Date().toISOString().slice(0, 10);
+    const csv = `sep=,\r\n${[headers, ...rows].map((row) => row.join(",")).join("\r\n")}`;
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `cardroster-${exportedAt}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   function addCollection() {
     const cleanName = newCollection.trim();
     if (!cleanName || savedCollections.includes(cleanName)) return;
@@ -213,6 +339,38 @@ export default function Home() {
     setSavedCollections(nextCollections);
     localStorage.setItem("cardroster.collections", JSON.stringify(nextCollections));
     setNewCollection("");
+  }
+
+  function addChaseCard() {
+    const player = newChasePlayer.trim();
+    if (!player) return;
+
+    const chaseCard: Card = {
+      id: crypto.randomUUID(),
+      player,
+      sport: sport === "All" ? "Basketball" : sport,
+      team: "Unknown Team",
+      year: "Wanted",
+      brand: "Chase",
+      set: "Wishlist",
+      status: "Wishlist",
+      grade: "Raw",
+      color: activeTheme.accent,
+      collection: collection === "All" ? "Wishlist" : collection,
+      frameStyle: "Card",
+      borderStyle: "Soft",
+      tags: ["Favorite"],
+      imageX: 50,
+      imageY: 50,
+      imageZoom: 100,
+      imageRotation: 0,
+      isChase: true,
+    };
+    const nextCards = [chaseCard, ...savedCards];
+    setSavedCards(nextCards);
+    localStorage.setItem("cardroster.cards", JSON.stringify(nextCards));
+    setSelectedId(chaseCard.id);
+    setNewChasePlayer("");
   }
 
   return (
@@ -243,34 +401,124 @@ export default function Home() {
             </div>
           </div>
 
-          <nav className="hidden items-center gap-1 rounded-md border border-white/10 bg-white/5 p-1 text-xs font-bold text-slate-200 sm:flex">
-            <button className="rounded bg-white px-3 py-1.5 text-[#111722]">
-              Gallery
-            </button>
-            <Link className="rounded px-3 py-1.5 hover:bg-white/10" href="/upload">
+          <nav className="no-scrollbar hidden max-w-2xl items-center gap-1 overflow-x-auto rounded-full border border-white/10 bg-white/[0.04] p-1 text-xs font-bold text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] md:flex">
+            {appSections.map((section) => (
+              <button
+                key={section}
+                onClick={() => setActiveSection(section)}
+                className={`rounded-full px-3.5 py-1.5 transition ${
+                  activeSection === section
+                    ? "bg-white text-[#111722]"
+                    : "hover:bg-white/10"
+                }`}
+              >
+                {section}
+              </button>
+            ))}
+            <Link className="rounded-full px-3.5 py-1.5 hover:bg-white/10" href="/upload">
               Upload
             </Link>
-            <button className="rounded px-3 py-1.5 hover:bg-white/10">
-              Studio
-            </button>
           </nav>
         </div>
       </header>
 
+      {activeSection === "Home" ? (
+        <CollectorHome
+          accent={activeTheme.accent}
+          allCards={allCards}
+          collectionName={collectionName}
+          favoriteCards={favoriteCards}
+          grailCard={grailCard}
+          onOpenCard={(card) => setDetailId(card.id)}
+          onOpenCollection={() => setActiveSection("Collection")}
+          onOpenShowcase={() => setShowcaseOpen(true)}
+        />
+      ) : null}
+
+      {activeSection === "Feed" ? (
+        <PublicFeed
+          accent={activeTheme.accent}
+          cards={allCards}
+          collectionName={collectionName}
+          profile={collectorProfile}
+          onOpenCard={(card) => setDetailId(card.id)}
+          onOpenCollection={() => setActiveSection("Collection")}
+        />
+      ) : null}
+
+      {activeSection === "Tools" ? (
+        <CollectorWorkbench
+          accent={activeTheme.accent}
+          cards={allCards}
+          collectionName={collectionName}
+          onExport={exportCards}
+          onOpenCard={(card) => setDetailId(card.id)}
+          onOpenCollection={() => setActiveSection("Collection")}
+        />
+      ) : null}
+
+      {activeSection === "Trade" ? (
+        <TradeBrowse
+          accent={activeTheme.accent}
+          cards={allCards}
+          onOpenCard={(card) => setDetailId(card.id)}
+          onOpenCollection={() => setActiveSection("Collection")}
+        />
+      ) : null}
+
+      {activeSection === "Insights" ? (
+        <InsightsHome
+          accent={activeTheme.accent}
+          allCards={allCards}
+          autoCount={autoCount}
+          biggestCard={biggestCard}
+          chaseCards={chaseCards}
+          costBasis={costBasis}
+          favoriteCards={favoriteCards}
+          gradedCount={gradedCount}
+          inventoryValue={inventoryValue}
+          numberedCount={numberedCount}
+          onOpenCard={(card) => setDetailId(card.id)}
+          onOpenCollection={() => setActiveSection("Collection")}
+          portfolioGain={portfolioGain}
+          showMoney={showMoney}
+          soldValue={soldValue}
+        />
+      ) : null}
+
+      {(activeSection === "Wishlist" || activeSection === "Profile") ? (
+        <PlatformPreview
+          accent={activeTheme.accent}
+          allCards={allCards}
+          collectionName={collectionName}
+          collections={collections.filter((item) => item !== "All")}
+          favoriteCards={favoriteCards}
+          onProfileChange={setCollectorProfile}
+          section={activeSection}
+          profile={collectorProfile}
+          onBack={() => setActiveSection("Home")}
+        />
+      ) : null}
+
+      {activeSection === "Collection" ? (
+        <>
       <section className="mx-auto max-w-[1440px] px-4 py-4 sm:px-6">
         <div className="relative overflow-hidden rounded-xl border border-white/10 bg-[radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.08),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.055),rgba(255,255,255,0.015))] p-4 shadow-2xl sm:p-5">
           <div
             className="absolute inset-x-0 top-0 h-1"
             style={{ backgroundColor: activeTheme.accent }}
           />
-          <div className="relative grid gap-5 lg:grid-cols-[1fr_320px] lg:items-stretch">
+          <div className="relative grid gap-5 lg:grid-cols-[1fr_300px] lg:items-stretch">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-white/55">
-                Live collection room
+                CardRoster vault
               </p>
-              <h2 className="mt-2 max-w-3xl text-3xl font-black leading-tight tracking-normal sm:text-4xl">
-                Browse, style, and manage your card vault.
+              <h2 className="mt-2 max-w-3xl text-3xl font-black leading-tight tracking-normal">
+                Browse your roster like a collector gallery.
               </h2>
+              <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-slate-400">
+                Feature grails, sort vaults, manage trades, and keep the collection ready to share.
+              </p>
               <div className="mt-5 flex flex-wrap gap-2">
                 <Link
                   href="/upload"
@@ -280,47 +528,50 @@ export default function Home() {
                   Upload cards
                 </Link>
                 <button
-                  onClick={cycleDisplayMode}
+                  onClick={() => setShowcaseOpen(true)}
+                  disabled={allCards.length === 0}
+                  className="inline-flex h-10 items-center rounded-md border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Showcase
+                </button>
+                <button
+                  onClick={() => setShowMoney((current) => !current)}
                   className="inline-flex h-10 items-center rounded-md border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
                 >
-                  Preview {displayMode}
+                  {showMoney ? "Hide values" : "Show values"}
                 </button>
               </div>
-              <div className="mt-5 grid max-w-2xl gap-2 sm:grid-cols-4">
+              <div className={`mt-5 grid max-w-2xl gap-2 ${showMoney ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
                 <HeroMetric label="Cards saved" value={allCards.length.toString()} />
-                <HeroMetric
-                  label="Inventory"
-                  value={showMoney ? formatMoney(inventoryValue) : "Hidden"}
-                />
-                <HeroMetric label="Listed" value={listedCount.toString()} />
-                <HeroMetric
-                  label="Sold"
-                  value={showMoney ? formatMoney(soldValue) : "Hidden"}
-                />
+                {showMoney ? (
+                  <>
+                    <HeroMetric
+                      label="Collection value"
+                      value={formatMoney(inventoryValue)}
+                    />
+                    <HeroMetric label="Cost basis" value={formatMoney(costBasis)} />
+                    <HeroMetric label="Sold" value={formatMoney(soldValue)} />
+                  </>
+                ) : (
+                  <>
+                    <HeroMetric label="Collections" value={(collections.length - 1).toString()} />
+                    <HeroMetric label="Shown" value={filteredCards.length.toString()} />
+                    <HeroMetric label="Chase list" value={chaseCards.length.toString()} />
+                  </>
+                )}
               </div>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-black/30 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-              <div className="flex items-center justify-between">
+            <div className="rounded-xl border border-white/10 bg-black/30 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+              <div className="flex items-center justify-between gap-3">
                 <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-                  Display style
+                  Public profile
                 </p>
-                <span className="rounded bg-white/10 px-2 py-1 text-[10px] font-black text-slate-300">
-                  {frameStyle}
+                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
+                  Preview
                 </span>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <StyleSwatch label="Card" active={frameStyle === "Card"} />
-                <StyleSwatch label="Gradient" active={frameStyle === "Gradient"} rainbow />
-                <StyleSwatch label="Stand" active={frameStyle === "Stand"} glass />
-              </div>
-              <button
-                onClick={() => setShowMoney((current) => !current)}
-                className="mt-3 h-9 w-full rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10"
-              >
-                {showMoney ? "Hide values" : "Show values"}
-              </button>
-              <label className="mt-3 block text-xs font-bold text-slate-200">
+              <label className="mt-4 block text-xs font-bold text-slate-200">
                 Collection name
               </label>
               <input
@@ -328,14 +579,34 @@ export default function Home() {
                 onChange={(event) => setCollectionName(event.target.value)}
                 className="mt-1.5 h-9 w-full rounded-md border border-white/10 bg-black/30 px-3 text-sm text-white outline-none focus:border-white/40"
               />
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <MiniStat label="Cards" value={allCards.length.toString()} />
+                <MiniStat label="Vaults" value={(collections.length - 1).toString()} />
+                <MiniStat label="Favorites" value={(favoriteCards.length + (grailCard ? 1 : 0)).toString()} />
+                <MiniStat label="Chases" value={chaseCards.length.toString()} />
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setActiveSection("Profile")}
+                  className="h-9 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10"
+                >
+                  Profile
+                </button>
+                <button
+                  onClick={() => setActiveSection("Feed")}
+                  className="h-9 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10"
+                >
+                  Feed
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-[1440px] gap-4 px-4 pb-8 sm:px-6 lg:grid-cols-[230px_minmax(0,1fr)_300px]">
-        <aside className={`h-fit rounded-lg border border-white/10 ${activeTheme.panel} p-3 shadow-xl lg:sticky lg:top-20`}>
-          <RailSection title="Find">
+      <section className="mx-auto grid max-w-[1440px] gap-4 px-4 pb-8 sm:px-6 lg:grid-cols-[250px_minmax(0,1fr)_300px]">
+        <aside className={`h-fit rounded-xl border border-white/10 ${activeTheme.panel} p-3 shadow-xl lg:sticky lg:top-20`}>
+          <RailSection title="Browse">
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -344,42 +615,18 @@ export default function Home() {
             />
           </RailSection>
 
-          <RailSection title="Filter cards">
-            <ControlGroup title="Sport">
-              {sports.map((item) => (
-                <FilterButton
-                  key={item}
-                  active={sport === item}
-                  label={item}
-                  accent={activeTheme.accent}
-                  onClick={() => setSport(item)}
-                />
-              ))}
-            </ControlGroup>
-
-            <ControlGroup title="Status">
-              {statuses.map((item) => (
-                <FilterButton
-                  key={item}
-                  active={status === item}
-                  label={item}
-                  accent={activeTheme.accent}
-                  onClick={() => setStatus(item)}
-                />
-              ))}
-            </ControlGroup>
-
-            <ControlGroup title="Collection">
-              {collections.map((item) => (
-                <FilterButton
-                  key={item}
-                  active={collection === item}
-                  label={item}
-                  accent={activeTheme.accent}
-                  onClick={() => setCollection(item)}
-                />
-              ))}
-            </ControlGroup>
+          <RailSection title="Quick filters">
+            <div className="grid gap-2">
+              <FilterSelect label="Collection" value={collection} onChange={setCollection} options={collections} />
+              <FilterSelect label="Sport" value={sport} onChange={setSport} options={sports} />
+              <FilterSelect label="Status" value={status} onChange={setStatus} options={statuses} />
+              <FilterSelect
+                label="Tag"
+                value={tagFilter}
+                onChange={(value) => setTagFilter(value as "All" | CardTag)}
+                options={["All", ...cardTags]}
+              />
+            </div>
           </RailSection>
 
           <RailSection title="Add collection">
@@ -399,46 +646,81 @@ export default function Home() {
             </div>
           </RailSection>
 
-          <RailSection title="Default style">
-            <ControlGroup title="Theme">
-              {(["Arena", "Chrome", "Hardwood"] as ThemeName[]).map((item) => (
-                <FilterButton
-                  key={item}
-                  active={theme === item}
-                  label={item}
-                  accent={activeTheme.accent}
-                  onClick={() => setTheme(item)}
-                />
-              ))}
-            </ControlGroup>
+          <RailSection title="Chase card">
+            <div className="grid gap-2">
+              <input
+                value={newChasePlayer}
+                onChange={(event) => setNewChasePlayer(event.target.value)}
+                className="h-9 rounded-md border border-white/10 bg-black/30 px-3 text-xs font-bold text-white outline-none placeholder:text-slate-500 focus:border-white/40"
+                placeholder="Player or card to chase"
+              />
+              <button
+                onClick={addChaseCard}
+                className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10"
+              >
+                Add to wishlist
+              </button>
+            </div>
+          </RailSection>
 
-            <ControlGroup title="Finish">
-              {(["Soft", "Chrome", "Glow"] as BorderStyle[]).map((item) => (
-                <FilterButton
-                  key={item}
-                  active={borderStyle === item}
-                  label={item}
-                  accent={activeTheme.accent}
-                  onClick={() => setBorderStyle(item)}
+          <RailSection title="Defaults">
+            <details className="group rounded-lg border border-white/10 bg-black/15 p-2">
+              <summary className="cursor-pointer list-none text-sm font-black text-sky-100 group-open:text-white">
+                Theme and card finish
+              </summary>
+              <div className="mt-3 grid gap-2">
+                <FilterSelect
+                  label="Theme"
+                  value={theme}
+                  onChange={(value) => setTheme(value as ThemeName)}
+                  options={["Arena", "Chrome", "Hardwood"]}
                 />
-              ))}
-            </ControlGroup>
-
-            <ControlGroup title="Frame">
-              {(["Card", "Gradient", "Sunset", "Stand"] as FrameStyle[]).map((item) => (
-                <FilterButton
-                  key={item}
-                  active={frameStyle === item}
-                  label={item}
-                  accent={activeTheme.accent}
-                  onClick={() => setFrameStyle(item)}
+                <FilterSelect
+                  label="Frame"
+                  value={frameStyle}
+                  onChange={(value) => setFrameStyle(value as FrameStyle)}
+                  options={["Card", "Gradient", "Sunset", "Stand"]}
                 />
-              ))}
-            </ControlGroup>
+                <FilterSelect
+                  label="Finish"
+                  value={borderStyle}
+                  onChange={(value) => setBorderStyle(value as BorderStyle)}
+                  options={["Soft", "Chrome", "Glow"]}
+                />
+              </div>
+            </details>
           </RailSection>
         </aside>
 
         <section className="min-w-0 rounded-xl border border-white/10 bg-black/15 p-3 shadow-2xl">
+          <CollectionQuickNav
+            accent={activeTheme.accent}
+            activeLabel={tagFilter === "Favorite" ? "Favorites" : status}
+            counts={{
+              all: allCards.length,
+              favorites: favoriteCards.length + (grailCard ? 1 : 0),
+              trade: allCards.filter((card) => card.status === "For Trade").length,
+              wishlist: allCards.filter((card) => card.status === "Wishlist").length,
+            }}
+            onAll={() => {
+              setCollection("All");
+              setStatus("All");
+              setTagFilter("All");
+            }}
+            onFavorites={() => {
+              setStatus("All");
+              setTagFilter("Favorite");
+            }}
+            onTrade={() => {
+              setTagFilter("All");
+              setStatus("For Trade");
+            }}
+            onWishlist={() => {
+              setTagFilter("All");
+              setStatus("Wishlist");
+            }}
+          />
+
           {grailCard ? (
             <GrailDisplay
               accent={activeTheme.accent}
@@ -446,6 +728,24 @@ export default function Home() {
               card={grailCard}
               frameStyle="Stand"
               onSelect={() => setSelectedId(grailCard.id)}
+            />
+          ) : null}
+
+          {allCards.length > 0 ? (
+            <CollectionExhibit
+              accent={activeTheme.accent}
+              cards={activeCollectionCards}
+              collection={collection}
+              collections={collections.filter((item) => item !== "All")}
+              onSelectCollection={setCollection}
+            />
+          ) : null}
+
+          {allCards.length > 0 ? (
+            <FeaturedShelf
+              accent={activeTheme.accent}
+              cards={favoriteCards}
+              onSelect={(card) => setSelectedId(card.id)}
             />
           ) : null}
 
@@ -508,6 +808,7 @@ export default function Home() {
                   mode={displayMode}
                   selected={selectedCard?.id === card.id}
                   onClick={() => setSelectedId(card.id)}
+                  onDoubleClick={() => setDetailId(card.id)}
                 />
               ))}
             </div>
@@ -529,6 +830,7 @@ export default function Home() {
             <>
               <div className="mt-4 h-[260px] rounded-xl border border-white/10 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.08),transparent_44%),rgba(0,0,0,0.2)] p-3">
                 <CardPreview
+                  key={`${selectedCard.id}-${selectedCard.imageX ?? 50}-${selectedCard.imageY ?? 50}-${selectedCard.imageZoom ?? 100}-${selectedCard.imageRotation ?? 0}`}
                   card={selectedCard}
                   accent={activeTheme.accent}
                   borderStyle={borderStyle}
@@ -537,149 +839,200 @@ export default function Home() {
                 />
               </div>
               <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
-                <p className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                  Edit card
-                </p>
-                <div className="grid gap-2">
-                <EditField label="Player">
-                  <input
-                    value={selectedCard.player}
-                    onChange={(event) =>
-                      updateCard(selectedCard.id, { player: event.target.value })
-                    }
-                    className="studio-field"
-                  />
-                </EditField>
-                <div className="grid grid-cols-2 gap-2">
-                  <EditField label="Team">
-                    <input
-                      value={selectedCard.team}
-                      onChange={(event) =>
-                        updateCard(selectedCard.id, { team: event.target.value })
-                      }
-                      className="studio-field"
-                    />
-                  </EditField>
-                  <EditField label="Year">
-                    <input
-                      value={selectedCard.year}
-                      onChange={(event) =>
-                        updateCard(selectedCard.id, { year: event.target.value })
-                      }
-                      className="studio-field"
-                    />
-                  </EditField>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <EditField label="Brand">
-                    <input
-                      value={selectedCard.brand}
-                      onChange={(event) =>
-                        updateCard(selectedCard.id, { brand: event.target.value })
-                      }
-                      className="studio-field"
-                    />
-                  </EditField>
-                  <EditField label="Set">
-                    <input
-                      value={selectedCard.set}
-                      onChange={(event) =>
-                        updateCard(selectedCard.id, { set: event.target.value })
-                      }
-                      className="studio-field"
-                    />
-                  </EditField>
-                </div>
-                <EditField label="Collection">
-                  <select
-                    value={selectedCard.collection}
-                    onChange={(event) =>
-                      updateCard(selectedCard.id, { collection: event.target.value })
-                    }
-                    className="studio-field"
-                  >
-                    {collections
-                      .filter((item) => item !== "All")
-                      .map((item) => (
-                        <option key={item}>{item}</option>
-                      ))}
-                  </select>
-                </EditField>
-                <div className="grid grid-cols-2 gap-2">
-                  <EditField label="Frame">
-                    <select
-                      value={selectedCard.frameStyle ?? frameStyle}
-                      onChange={(event) =>
-                        updateCard(selectedCard.id, {
-                          frameStyle: event.target.value as FrameStyle,
-                        })
-                      }
-                      className="studio-field"
+                <div className="mb-3 grid grid-cols-3 gap-1 rounded-lg border border-white/10 bg-black/25 p-1">
+                  {(["Info", "Style", "Crop", "Value", "Lookup"] as StudioTab[]).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setStudioTab(tab)}
+                      className={`h-8 flex-1 rounded-md text-[11px] font-black transition ${
+                        studioTab === tab
+                          ? "bg-white text-[#111722]"
+                          : "text-slate-300 hover:bg-white/10"
+                      }`}
                     >
-                      <option>Card</option>
-                      <option>Gradient</option>
-                      <option>Sunset</option>
-                      <option>Stand</option>
-                    </select>
-                  </EditField>
-                  <EditField label="Finish">
-                    <select
-                      value={selectedCard.borderStyle ?? borderStyle}
-                      onChange={(event) =>
-                        updateCard(selectedCard.id, {
-                          borderStyle: event.target.value as BorderStyle,
-                        })
-                      }
-                      className="studio-field"
-                    >
-                      <option>Soft</option>
-                      <option>Chrome</option>
-                      <option>Glow</option>
-                    </select>
-                  </EditField>
+                      {tab}
+                    </button>
+                  ))}
                 </div>
-                <div className="grid grid-cols-1 gap-2">
-                  <EditField label="Frame color">
-                    <input
-                      value={selectedCard.color}
-                      onChange={(event) =>
-                        updateCard(selectedCard.id, { color: event.target.value })
-                      }
-                      className="studio-field"
-                      type="color"
-                    />
-                  </EditField>
+                {studioTab === "Info" ? (
+                  <div className="grid gap-2">
+                    <EditField label="Player">
+                      <input value={selectedCard.player} onChange={(event) => updateCard(selectedCard.id, { player: event.target.value })} className="studio-field" />
+                    </EditField>
+                    <div className="grid grid-cols-2 gap-2">
+                      <EditField label="Team">
+                        <input value={selectedCard.team} onChange={(event) => updateCard(selectedCard.id, { team: event.target.value })} className="studio-field" />
+                      </EditField>
+                      <EditField label="Year">
+                        <input value={selectedCard.year} onChange={(event) => updateCard(selectedCard.id, { year: event.target.value })} className="studio-field" />
+                      </EditField>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <EditField label="Brand">
+                        <input value={selectedCard.brand} onChange={(event) => updateCard(selectedCard.id, { brand: event.target.value })} className="studio-field" />
+                      </EditField>
+                      <EditField label="Set">
+                        <input value={selectedCard.set} onChange={(event) => updateCard(selectedCard.id, { set: event.target.value })} className="studio-field" />
+                      </EditField>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <EditField label="Card #">
+                        <input value={selectedCard.cardNumber ?? ""} onChange={(event) => updateCard(selectedCard.id, { cardNumber: event.target.value })} className="studio-field" placeholder="#144" />
+                      </EditField>
+                      <EditField label="Parallel">
+                        <input value={selectedCard.parallel ?? ""} onChange={(event) => updateCard(selectedCard.id, { parallel: event.target.value })} className="studio-field" placeholder="Refractor, holo..." />
+                      </EditField>
+                    </div>
+                    <EditField label="Collection">
+                      <select value={selectedCard.collection} onChange={(event) => updateCard(selectedCard.id, { collection: event.target.value })} className="studio-field">
+                        {collections.filter((item) => item !== "All").map((item) => <option key={item}>{item}</option>)}
+                      </select>
+                    </EditField>
+                    <EditField label="Status">
+                      <select value={selectedCard.status} onChange={(event) => updateCard(selectedCard.id, { status: event.target.value as Card["status"] })} className="studio-field">
+                        <option>Vaulted</option>
+                        <option>Wishlist</option>
+                        <option>For Trade</option>
+                      </select>
+                    </EditField>
+                    <EditField label="Notes">
+                      <textarea value={selectedCard.notes ?? ""} onChange={(event) => updateCard(selectedCard.id, { notes: event.target.value })} className="studio-field min-h-20 py-2" placeholder="Why this card matters, where it came from, condition notes..." />
+                    </EditField>
+                  </div>
+                ) : null}
+                {studioTab === "Style" ? (
+                  <div className="grid gap-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <EditField label="Frame">
+                        <select value={selectedCard.frameStyle ?? frameStyle} onChange={(event) => updateCard(selectedCard.id, { frameStyle: event.target.value as FrameStyle })} className="studio-field">
+                          <option>Card</option>
+                          <option>Gradient</option>
+                          <option>Sunset</option>
+                          <option>Stand</option>
+                        </select>
+                      </EditField>
+                      <EditField label="Finish">
+                        <select value={selectedCard.borderStyle ?? borderStyle} onChange={(event) => updateCard(selectedCard.id, { borderStyle: event.target.value as BorderStyle })} className="studio-field">
+                          <option>Soft</option>
+                          <option>Chrome</option>
+                          <option>Glow</option>
+                        </select>
+                      </EditField>
+                    </div>
+                    <EditField label="Frame color">
+                      <input value={selectedCard.color} onChange={(event) => updateCard(selectedCard.id, { color: event.target.value })} className="studio-field" type="color" />
+                    </EditField>
+                    <EditField label="Tags">
+                      <div className="flex flex-wrap gap-2">
+                        {cardTags.map((tag) => {
+                          const active = selectedCard.tags?.includes(tag) ?? false;
+                          return (
+                            <button key={tag} type="button" onClick={() => updateCard(selectedCard.id, { tags: toggleTag(selectedCard.tags, tag) })} className={`h-8 rounded-full px-3 text-[11px] font-black transition ${active ? "bg-white text-[#111722]" : "border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}>
+                              {tag}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </EditField>
+                  </div>
+                ) : null}
+                {studioTab === "Crop" ? (
+                  <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                    <div className="grid gap-3">
+                      <RangeField label="Horizontal" value={selectedCard.imageX ?? 50} onChange={(value) => updateCard(selectedCard.id, { imageX: value })} />
+                      <RangeField label="Vertical" value={selectedCard.imageY ?? 50} onChange={(value) => updateCard(selectedCard.id, { imageY: value })} />
+                      <RangeField label="Zoom" min={100} max={150} value={selectedCard.imageZoom ?? 100} onChange={(value) => updateCard(selectedCard.id, { imageZoom: value })} />
+                      <RangeField label="Rotate" min={-180} max={180} value={selectedCard.imageRotation ?? 0} onChange={(value) => updateCard(selectedCard.id, { imageRotation: value })} />
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <button type="button" onClick={() => updateCard(selectedCard.id, { imageRotation: rotateValue(selectedCard.imageRotation ?? 0, -90) })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                        Left
+                      </button>
+                      <button type="button" onClick={() => updateCard(selectedCard.id, { imageRotation: rotateValue(selectedCard.imageRotation ?? 0, 90) })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                        Right
+                      </button>
+                      <button type="button" onClick={() => updateCard(selectedCard.id, { imageX: 50, imageY: 50, imageZoom: 100, imageRotation: 0 })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                        Reset
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {studioTab === "Value" ? (
+                  showMoney ? (
+                    <div className="grid gap-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <EditField label="Value">
+                          <input value={selectedCard.estimatedValue ?? ""} onChange={(event) => updateCard(selectedCard.id, { estimatedValue: event.target.value })} className="studio-field" placeholder="$0" />
+                        </EditField>
+                        <EditField label="Cost">
+                          <input value={selectedCard.purchasePrice ?? ""} onChange={(event) => updateCard(selectedCard.id, { purchasePrice: event.target.value })} className="studio-field" placeholder="$0" />
+                        </EditField>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <EditField label="Sale status">
+                          <select value={selectedCard.saleStatus ?? "Holding"} onChange={(event) => updateCard(selectedCard.id, { saleStatus: event.target.value as Card["saleStatus"] })} className="studio-field">
+                            <option>Holding</option>
+                            <option>Listed</option>
+                            <option>Sold</option>
+                          </select>
+                        </EditField>
+                        <EditField label="Sold for">
+                          <input value={selectedCard.salePrice ?? ""} onChange={(event) => updateCard(selectedCard.id, { salePrice: event.target.value })} className="studio-field" placeholder="$0" />
+                      </EditField>
+                    </div>
+                    <EditField label="Acquired from">
+                      <input value={selectedCard.acquiredFrom ?? ""} onChange={(event) => updateCard(selectedCard.id, { acquiredFrom: event.target.value })} className="studio-field" placeholder="Shop, trade, eBay, show..." />
+                    </EditField>
+                      <EditField label="Target price">
+                        <input value={selectedCard.targetPrice ?? ""} onChange={(event) => updateCard(selectedCard.id, { targetPrice: event.target.value })} className="studio-field" placeholder="Wishlist target" />
+                      </EditField>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm font-bold text-slate-400">
+                      Value tracking is hidden for this roster.
+                    </div>
+                  )
+                ) : null}
+                {studioTab === "Lookup" ? (
+                  <div className="grid gap-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <EditField label="Location">
+                        <input value={selectedCard.storageLocation ?? ""} onChange={(event) => updateCard(selectedCard.id, { storageLocation: event.target.value })} className="studio-field" placeholder="Box A, binder 2..." />
+                      </EditField>
+                      <EditField label="Cert #">
+                        <input value={selectedCard.certNumber ?? ""} onChange={(event) => updateCard(selectedCard.id, { certNumber: event.target.value })} className="studio-field" placeholder="PSA/BGS/SGC" />
+                      </EditField>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <EditField label="Grading co.">
+                        <input value={selectedCard.gradingCompany ?? ""} onChange={(event) => updateCard(selectedCard.id, { gradingCompany: event.target.value })} className="studio-field" placeholder="PSA, BGS, SGC" />
+                      </EditField>
+                      <EditField label="Fee">
+                        <input value={selectedCard.gradingFee ?? ""} onChange={(event) => updateCard(selectedCard.id, { gradingFee: event.target.value })} className="studio-field" placeholder="$25" />
+                      </EditField>
+                    </div>
+                    <CardResearchPanel card={selectedCard} />
+                  </div>
+                ) : null}
+                <div className="mt-3 grid gap-2">
+                  <button onClick={() => setGrailId(selectedCard.id)} className="h-9 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                    Set as grail display
+                  </button>
+                  <button onClick={() => setDetailId(selectedCard.id)} className="h-9 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                    View card page
+                  </button>
+                  {selectedCard.sourceUrl ? (
+                    <a href={selectedCard.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                      Open source listing
+                    </a>
+                  ) : null}
                 </div>
-                <div className="grid grid-cols-1 gap-2">
-                  <EditField label="Status">
-                    <select
-                      value={selectedCard.status}
-                      onChange={(event) =>
-                        updateCard(selectedCard.id, {
-                          status: event.target.value as Card["status"],
-                        })
-                      }
-                      className="studio-field"
-                    >
-                      <option>Vaulted</option>
-                      <option>Wishlist</option>
-                      <option>For Trade</option>
-                    </select>
-                  </EditField>
-                </div>
-                <button
-                  onClick={() => setGrailId(selectedCard.id)}
-                  className="h-9 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10"
-                >
-                  Set as grail display
-                </button>
-              </div>
               </div>
               {showMoney ? (
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   <Detail
                     label="Value"
-                    value={formatMoney(moneyValue(selectedCard.estimatedValue))}
+                    value={formatMoney(cardValue(selectedCard))}
                   />
                   <Detail
                     label="Cost"
@@ -690,7 +1043,7 @@ export default function Home() {
               ) : (
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <Detail label="Status" value={selectedCard.status} />
-                  <Detail label="Sale" value={selectedCard.saleStatus ?? "Holding"} />
+                  <Detail label="Grade" value={selectedCard.grade} />
                 </div>
               )}
               <button
@@ -709,6 +1062,38 @@ export default function Home() {
           )}
         </aside>
       </section>
+        </>
+      ) : null}
+      {detailId ? (
+        <CardDetailModal
+          accent={activeTheme.accent}
+          borderStyle={borderStyle}
+          card={allCards.find((card) => card.id === detailId) ?? selectedCard}
+          frameStyle={frameStyle}
+          onClose={() => setDetailId("")}
+          onNext={() => {
+            const currentIndex = filteredCards.findIndex((card) => card.id === detailId);
+            const nextCard = filteredCards[(currentIndex + 1) % filteredCards.length];
+            if (nextCard) setDetailId(nextCard.id);
+          }}
+          onPrevious={() => {
+            const currentIndex = filteredCards.findIndex((card) => card.id === detailId);
+            const nextCard =
+              filteredCards[(currentIndex - 1 + filteredCards.length) % filteredCards.length];
+            if (nextCard) setDetailId(nextCard.id);
+          }}
+          showMoney={showMoney}
+        />
+      ) : null}
+      {showcaseOpen ? (
+        <ShowcaseOverlay
+          accent={activeTheme.accent}
+          borderStyle={borderStyle}
+          cards={filteredCards.length ? filteredCards : allCards}
+          frameStyle={frameStyle}
+          onClose={() => setShowcaseOpen(false)}
+        />
+      ) : null}
     </main>
   );
 }
@@ -719,10 +1104,1799 @@ function displayModeClasses(mode: DisplayMode) {
   }
 
   if (mode === "Showcase") {
-    return "grid auto-rows-fr gap-5 xl:grid-cols-2";
+    return "grid gap-4";
   }
 
-  return "grid auto-rows-fr gap-4 [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]";
+  return "grid auto-rows-fr gap-4 [grid-template-columns:repeat(auto-fill,minmax(225px,1fr))]";
+}
+
+function CollectionQuickNav({
+  accent,
+  activeLabel,
+  counts,
+  onAll,
+  onFavorites,
+  onTrade,
+  onWishlist,
+}: {
+  accent: string;
+  activeLabel: string;
+  counts: { all: number; favorites: number; trade: number; wishlist: number };
+  onAll: () => void;
+  onFavorites: () => void;
+  onTrade: () => void;
+  onWishlist: () => void;
+}) {
+  const items = [
+    { count: counts.all, label: "All", onClick: onAll },
+    { count: counts.favorites, label: "Favorites", onClick: onFavorites },
+    { count: counts.trade, label: "For Trade", onClick: onTrade },
+    { count: counts.wishlist, label: "Wishlist", onClick: onWishlist },
+  ];
+
+  return (
+    <div className="mb-3 overflow-hidden rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.015))] p-3">
+      <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+            Browse by intent
+          </p>
+          <p className="mt-1 text-sm font-bold text-slate-300">
+            Jump between your main roster, favorites, trades, and chase cards.
+          </p>
+        </div>
+        <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
+          {items.map((item) => {
+            const active = activeLabel === item.label || (item.label === "All" && activeLabel === "All");
+
+            return (
+              <button
+                key={item.label}
+                onClick={item.onClick}
+                className={`flex h-10 shrink-0 items-center gap-2 rounded-full border px-3 text-xs font-black transition ${
+                  active
+                    ? "border-white/20 text-white"
+                    : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+                }`}
+                style={active ? { backgroundColor: accent } : undefined}
+              >
+                <span>{item.label}</span>
+                <span className="rounded-full bg-black/25 px-2 py-0.5 text-[10px] text-white">
+                  {item.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CollectorHome({
+  accent,
+  allCards,
+  collectionName,
+  favoriteCards,
+  grailCard,
+  onOpenCard,
+  onOpenCollection,
+  onOpenShowcase,
+}: {
+  accent: string;
+  allCards: Card[];
+  collectionName: string;
+  favoriteCards: Card[];
+  grailCard?: Card;
+  onOpenCard: (card: Card) => void;
+  onOpenCollection: () => void;
+  onOpenShowcase: () => void;
+}) {
+  const shelfCards = [grailCard, ...favoriteCards]
+    .filter((card): card is Card => Boolean(card))
+    .filter((card, index, cards) => cards.findIndex((item) => item.id === card.id) === index)
+    .slice(0, 5);
+  const communityCards = allCards.slice(0, 6);
+  const heroCards = shelfCards.length ? shelfCards.slice(0, 4) : allCards.slice(0, 4);
+
+  return (
+    <section className="mx-auto grid max-w-[1440px] gap-4 px-4 py-4 sm:px-6">
+      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_12%_18%,rgba(255,255,255,0.13),transparent_26%),radial-gradient(circle_at_78%_18%,rgba(56,213,255,0.13),transparent_24%),linear-gradient(135deg,rgba(255,255,255,0.075),rgba(255,255,255,0.018))] p-5 shadow-2xl sm:p-6">
+        <div
+          className="absolute inset-x-0 top-0 h-1.5"
+          style={{ background: `linear-gradient(90deg, ${accent}, #f8e71c, #20e3b2, #38bdf8, #ec4899)` }}
+        />
+        <div className="relative grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(520px,1fr)] xl:items-center">
+          <div className="py-2">
+            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
+              CardRoster social vault
+            </p>
+            <h2 className="mt-3 max-w-4xl text-4xl font-black leading-[1.02] sm:text-6xl">
+              Your card room, built to browse.
+            </h2>
+            <p className="mt-4 max-w-2xl text-sm font-bold leading-6 text-slate-300">
+              Showcase grails, organize vaults, save chases, and make your collection feel public-ready without turning it into a spreadsheet.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <button
+                onClick={onOpenCollection}
+                className="h-11 rounded-lg px-5 text-sm font-black text-white shadow-lg transition hover:brightness-110"
+                style={{ backgroundColor: accent }}
+              >
+                Open collection
+              </button>
+              <button
+                onClick={onOpenShowcase}
+                disabled={allCards.length === 0}
+                className="h-11 rounded-lg border border-white/10 bg-white/5 px-5 text-sm font-black text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Launch showcase
+              </button>
+            </div>
+            <div className="mt-6 grid max-w-xl gap-2 sm:grid-cols-3">
+              <SocialStat label="Cards" value={allCards.length.toString()} />
+              <SocialStat label="Public vaults" value={allCards.length ? "1" : "0"} />
+              <SocialStat label="Trade links" value="Ready" />
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-[1fr_1.1fr]">
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+                Featured grail
+              </p>
+              {grailCard ? (
+                <button onClick={() => onOpenCard(grailCard)} className="mt-4 w-full text-left">
+                  <div className="mx-auto h-[310px] max-w-60">
+                    <CardPreview
+                      accent={accent}
+                      borderStyle={grailCard.borderStyle ?? "Soft"}
+                      card={grailCard}
+                      frameStyle={grailCard.frameStyle ?? "Stand"}
+                      large
+                      imageFit="contain"
+                    />
+                  </div>
+                  <p className="mt-4 truncate text-xl font-black text-white">{grailCard.player}</p>
+                  <p className="line-clamp-2 text-sm font-bold leading-5 text-slate-400">
+                    {grailCard.year} {grailCard.brand} {grailCard.set}
+                  </p>
+                </button>
+              ) : (
+                <div className="mt-4 rounded-xl border border-dashed border-white/10 p-6 text-sm font-bold text-slate-400">
+                  Upload cards to build your first exhibit.
+                </div>
+              )}
+            </div>
+            <div className="grid gap-3">
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+                  Mini wall
+                </p>
+                <div className="mt-3 grid grid-cols-4 gap-2">
+                  {heroCards.map((card) => (
+                    <button
+                      key={card.id}
+                      onClick={() => onOpenCard(card)}
+                      className="h-32 rounded-xl border border-white/10 bg-white/[0.03] p-2 transition hover:-translate-y-0.5 hover:border-white/25"
+                    >
+                      <MiniWallPreview card={card} accent={accent} />
+                    </button>
+                  ))}
+                  {heroCards.length === 0 ? (
+                    <div className="col-span-4 rounded-xl border border-dashed border-white/10 p-4 text-xs font-bold text-slate-400">
+                      Your first uploads will appear here.
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <CollectorProfileCard collectionName={collectionName} cardCount={allCards.length} accent={accent} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+        <div className="rounded-2xl border border-white/10 bg-[linear-gradient(135deg,rgba(21,27,36,0.98),rgba(10,14,20,0.98))] p-4 shadow-xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+                Showcase shelf
+              </p>
+              <h3 className="mt-1 text-2xl font-black">{collectionName}</h3>
+            </div>
+            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
+              {allCards.length} cards
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-4">
+            {shelfCards.map((card) => (
+              <button
+                key={card.id}
+                onClick={() => onOpenCard(card)}
+                className="rounded-xl border border-white/10 bg-black/20 p-3 text-left transition hover:-translate-y-0.5 hover:border-white/25"
+              >
+                <div className="mx-auto h-48">
+                  <CardPreview
+                    accent={accent}
+                    borderStyle={card.borderStyle ?? "Soft"}
+                    card={card}
+                    frameStyle={card.frameStyle ?? "Card"}
+                    imageFit="contain"
+                  />
+                </div>
+                <p className="mt-3 truncate text-sm font-black text-white">{card.player}</p>
+                <p className="truncate text-xs font-bold text-slate-500">{card.collection}</p>
+              </button>
+            ))}
+            {shelfCards.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-white/10 p-6 text-sm font-bold text-slate-400">
+                Favorite a card to fill the shelf.
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="grid gap-3">
+          <ExperienceTile title="Seller links" copy="Attach listings to cards marked for sale or trade." />
+          <ExperienceTile title="Proof badges" copy="Add purchase links, card-back photos, and verified ownership signals." />
+          <ExperienceTile title="Collector feed" copy="Follow vaults, like grails, and browse themed collections." />
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+                Community feed preview
+              </p>
+              <h3 className="mt-1 text-2xl font-black">Scroll-worthy collections</h3>
+            </div>
+            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
+              Public feed
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {communityCards.map((card) => (
+              <button
+                key={card.id}
+                onClick={() => onOpenCard(card)}
+                className="rounded-xl border border-white/10 bg-black/20 p-3 text-left transition hover:-translate-y-0.5 hover:border-white/25"
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="grid h-9 w-9 place-items-center rounded-full text-xs font-black"
+                    style={{ backgroundColor: card.color || accent }}
+                  >
+                    CR
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-white">{card.player}</p>
+                    <p className="truncate text-xs font-bold text-slate-500">
+                      from {card.collection}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 h-52">
+                  <CardPreview
+                    accent={accent}
+                    borderStyle={card.borderStyle ?? "Soft"}
+                    card={card}
+                    frameStyle={card.frameStyle ?? "Card"}
+                    imageFit="contain"
+                  />
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black text-slate-300">
+                    Like
+                  </span>
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black text-slate-300">
+                    Comment
+                  </span>
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black text-slate-300">
+                    Trade?
+                  </span>
+                </div>
+              </button>
+            ))}
+            {communityCards.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-white/10 p-6 text-sm font-bold text-slate-400">
+                Upload cards to start your public feed.
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <aside className="grid gap-4">
+          <CollectorSearchPanel accent={accent} />
+          <SafetyPanel />
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function TradeBrowse({
+  accent,
+  cards,
+  onOpenCard,
+  onOpenCollection,
+}: {
+  accent: string;
+  cards: Card[];
+  onOpenCard: (card: Card) => void;
+  onOpenCollection: () => void;
+}) {
+  const [tradeQuery, setTradeQuery] = useState("");
+  const [tradeSport, setTradeSport] = useState("All");
+  const tradeCards = cards.filter((card) => card.status === "For Trade");
+  const sports = ["All", ...Array.from(new Set(tradeCards.map((card) => card.sport)))];
+  const search = tradeQuery.toLowerCase().trim();
+  const filteredTradeCards = tradeCards.filter((card) => {
+    const matchesSearch = [card.player, card.team, card.year, card.brand, card.set]
+      .join(" ")
+      .toLowerCase()
+      .includes(search);
+    const matchesSport = tradeSport === "All" || card.sport === tradeSport;
+
+    return matchesSearch && matchesSport;
+  });
+
+  return (
+    <section className="mx-auto grid max-w-[1440px] gap-4 px-4 py-4 sm:px-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid gap-4">
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_12%_0%,rgba(255,255,255,0.12),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.075),rgba(255,255,255,0.014))] p-5 shadow-2xl">
+          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">
+            Trade floor
+          </p>
+          <div className="mt-2 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+            <div>
+              <h2 className="max-w-3xl text-4xl font-black leading-tight sm:text-5xl">
+                Cards marked for trade, ready to browse.
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-300">
+                This becomes the public cross-user trade page once cards move from localStorage to Postgres.
+              </p>
+            </div>
+            <button
+              onClick={onOpenCollection}
+              className="h-10 rounded-lg px-4 text-sm font-black text-white"
+              style={{ backgroundColor: accent }}
+            >
+              Mark cards
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px]">
+            <input
+              value={tradeQuery}
+              onChange={(event) => setTradeQuery(event.target.value)}
+              className="h-10 rounded-lg border border-white/10 bg-[#0b1018] px-3 text-sm font-bold text-white outline-none placeholder:text-slate-500 focus:border-white/40"
+              placeholder="Search player, team, year, brand..."
+            />
+            <select
+              value={tradeSport}
+              onChange={(event) => setTradeSport(event.target.value)}
+              className="h-10 rounded-lg border border-white/10 bg-[#0b1018] px-3 text-sm font-black text-white outline-none"
+            >
+              {sports.map((sport) => (
+                <option key={sport}>{sport}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {filteredTradeCards.length ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {filteredTradeCards.map((card) => (
+              <button
+                key={card.id}
+                onClick={() => onOpenCard(card)}
+                className="overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(135deg,rgba(21,27,36,0.98),rgba(8,12,18,0.98))] p-3 text-left shadow-xl transition hover:-translate-y-0.5 hover:border-white/25"
+              >
+                <div className="mx-auto h-64">
+                  <CardPreview
+                    accent={accent}
+                    borderStyle={card.borderStyle ?? "Soft"}
+                    card={card}
+                    frameStyle={card.frameStyle ?? "Card"}
+                    imageFit="contain"
+                  />
+                </div>
+                <p className="mt-3 truncate text-lg font-black text-white">{card.player}</p>
+                <p className="mt-1 truncate text-sm font-bold text-sky-200">{card.team}</p>
+                <p className="mt-3 text-sm font-bold leading-6 text-slate-300">
+                  {card.year} {card.brand} {card.set}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black text-[#111722]">
+                    For Trade
+                  </span>
+                  {card.tags?.slice(0, 3).map((tag) => (
+                    <span key={tag} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black text-slate-300">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-3xl border border-dashed border-white/10 bg-[#151b24] p-8 text-center shadow-xl">
+            <h3 className="text-2xl font-black text-white">No trade cards yet.</h3>
+            <p className="mx-auto mt-3 max-w-xl text-sm font-bold leading-6 text-slate-400">
+              Set a card status to For Trade in Card Studio and it will appear here.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <aside className="grid h-fit gap-4 xl:sticky xl:top-20">
+        <DashboardPanel title="Trade signals">
+          <MarketplaceSignal label="Available" value={tradeCards.length.toString()} />
+          <MarketplaceSignal label="Filtered" value={filteredTradeCards.length.toString()} />
+          <MarketplaceSignal label="Sports" value={(sports.length - 1).toString()} />
+        </DashboardPanel>
+        <ProfilePanel title="Next backend step">
+          <p className="text-sm font-bold leading-6 text-slate-400">
+            Replace this local list with `CardStatus.FOR_TRADE` records where `public = true`,
+            then connect the TradeInterest model for notifications.
+          </p>
+        </ProfilePanel>
+      </aside>
+    </section>
+  );
+}
+
+function InsightsHome({
+  accent,
+  allCards,
+  autoCount,
+  biggestCard,
+  chaseCards,
+  costBasis,
+  favoriteCards,
+  gradedCount,
+  inventoryValue,
+  numberedCount,
+  onOpenCard,
+  onOpenCollection,
+  portfolioGain,
+  showMoney,
+  soldValue,
+}: {
+  accent: string;
+  allCards: Card[];
+  autoCount: number;
+  biggestCard?: Card;
+  chaseCards: Card[];
+  costBasis: number;
+  favoriteCards: Card[];
+  gradedCount: number;
+  inventoryValue: number;
+  numberedCount: number;
+  onOpenCard: (card: Card) => void;
+  onOpenCollection: () => void;
+  portfolioGain: number;
+  showMoney: boolean;
+  soldValue: number;
+}) {
+  const displayCards = favoriteCards.length ? favoriteCards : allCards.slice(0, 5);
+  const growthBars = [28, 42, 34, 58, 52, 76, 70, 88, 80, 100];
+
+  return (
+    <section className="mx-auto grid max-w-[1440px] gap-4 px-4 py-4 sm:px-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-4">
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.10),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.015))] p-5 shadow-2xl">
+          <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.24em] text-white/50">
+                Insights dashboard
+              </p>
+              <h2 className="mt-3 max-w-3xl text-4xl font-black leading-tight sm:text-5xl">
+                Your collection, market, and showcase in one roster.
+              </h2>
+              <div className="mt-6 grid gap-3 sm:grid-cols-4">
+                <DashboardMetric label="Cards" value={allCards.length.toString()} />
+                <DashboardMetric label="Graded" value={gradedCount.toString()} />
+                <DashboardMetric label="Autos" value={autoCount.toString()} />
+                <DashboardMetric label="Numbered" value={numberedCount.toString()} />
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+                Collection value
+              </p>
+              <p className="mt-3 text-4xl font-black text-white">
+                {showMoney ? formatMoney(inventoryValue) : "Private"}
+              </p>
+              {showMoney ? (
+                <p className={`mt-2 text-sm font-black ${portfolioGain >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                  {portfolioGain >= 0 ? "+" : ""}
+                  {formatMoney(portfolioGain)} all-time
+                </p>
+              ) : null}
+              <button
+                onClick={onOpenCollection}
+                className="mt-5 h-10 w-full rounded-md text-sm font-black text-white"
+                style={{ backgroundColor: accent }}
+              >
+                Open collection
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+                Collection growth
+              </p>
+              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
+                10 periods
+              </span>
+            </div>
+            <div className="mt-6 flex h-44 items-end gap-2">
+              {growthBars.map((height, index) => (
+                <div key={index} className="flex flex-1 items-end rounded-t-lg bg-white/5">
+                  <div
+                    className="w-full rounded-t-lg"
+                    style={{
+                      height: `${height}%`,
+                      background: `linear-gradient(180deg, ${accent}, rgba(255,255,255,0.12))`,
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
+            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+              Most valuable card
+            </p>
+            {biggestCard ? (
+              <button onClick={() => onOpenCard(biggestCard)} className="mt-4 w-full text-left">
+                <div className="mx-auto h-56 max-w-40">
+                  <CardPreview
+                    accent={accent}
+                    borderStyle={biggestCard.borderStyle ?? "Soft"}
+                    card={biggestCard}
+                    frameStyle={biggestCard.frameStyle ?? "Card"}
+                    large
+                  />
+                </div>
+                <p className="mt-4 text-lg font-black text-white">{biggestCard.player}</p>
+                <p className="text-sm font-bold text-slate-400">
+                  {biggestCard.year} {biggestCard.brand}
+                </p>
+              </button>
+            ) : (
+              <p className="mt-4 text-sm font-bold text-slate-400">
+                Upload cards to identify your top card.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+              Showcase shelf
+            </p>
+            <span className="text-xs font-black text-slate-400">
+              {displayCards.length} featured
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
+            {displayCards.map((card) => (
+              <button
+                key={card.id}
+                onClick={() => onOpenCard(card)}
+                className="rounded-xl border border-white/10 bg-black/20 p-3 text-left transition hover:-translate-y-0.5 hover:border-white/25"
+              >
+                <div className="mx-auto h-40">
+                  <CardPreview
+                    accent={accent}
+                    borderStyle={card.borderStyle ?? "Soft"}
+                    card={card}
+                    frameStyle={card.frameStyle ?? "Card"}
+                  />
+                </div>
+                <p className="mt-3 truncate text-sm font-black text-white">{card.player}</p>
+                <p className="truncate text-xs font-bold text-slate-500">{card.collection}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <aside className="grid h-fit gap-4">
+        <DashboardPanel title="Portfolio">
+          <MiniStat label="Cost basis" value={showMoney ? formatMoney(costBasis) : "Private"} />
+          <MiniStat label="Sold total" value={showMoney ? formatMoney(soldValue) : "Private"} />
+          <MiniStat label="Wishlist" value={chaseCards.length.toString()} />
+        </DashboardPanel>
+        <DashboardPanel title="Recent activity">
+          {(allCards.slice(0, 5)).map((card) => (
+            <button key={card.id} onClick={() => onOpenCard(card)} className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-2 text-left hover:bg-white/[0.06]">
+              <div
+                className="h-12 w-9 rounded bg-cover bg-center"
+                style={{
+                  backgroundImage: card.imageUrl ? `url(${card.imageUrl})` : undefined,
+                  backgroundColor: card.imageUrl ? undefined : card.color,
+                  backgroundPosition: imagePosition(card),
+                  backgroundSize: `${card.imageZoom ?? 100}%`,
+                  transform: imageRotateTransform(card),
+                }}
+              />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black text-white">{card.player}</p>
+                <p className="truncate text-xs text-slate-500">{card.status}</p>
+              </div>
+            </button>
+          ))}
+        </DashboardPanel>
+        <DashboardPanel title="Market movers">
+          {["Recent sales import", "Price alerts", "eBay sold comps", "Prospect watchlist"].map((item) => (
+            <div key={item} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-bold text-slate-300">
+              {item}
+            </div>
+          ))}
+        </DashboardPanel>
+      </aside>
+    </section>
+  );
+}
+
+function PlatformPreview({
+  accent,
+  allCards,
+  collectionName,
+  collections,
+  favoriteCards,
+  onBack,
+  onProfileChange,
+  profile,
+  section,
+}: {
+  accent: string;
+  allCards: Card[];
+  collectionName: string;
+  collections: string[];
+  favoriteCards: Card[];
+  onBack: () => void;
+  onProfileChange: (profile: CollectorProfile) => void;
+  profile: CollectorProfile;
+  section: AppSection;
+}) {
+  const profileCards = favoriteCards.length ? favoriteCards.slice(0, 4) : allCards.slice(0, 4);
+  const isProfile = section === "Profile";
+  const teams = Array.from(new Set(allCards.map((card) => card.team).filter(Boolean))).slice(0, 5);
+  const visibleCollections = collections.length
+    ? collections
+    : Array.from(new Set(allCards.map((card) => card.collection).filter(Boolean))).slice(0, 4);
+  const publicVaults = profile.publicCollections.length
+    ? profile.publicCollections
+    : visibleCollections.slice(0, 1);
+  const favoritePCs = profile.favoritePCs.length ? profile.favoritePCs : teams;
+  const publicUrl = `cardroster.app/${profile.handle || "cardroster"}`;
+
+  function updateProfile(updates: Partial<CollectorProfile>) {
+    onProfileChange({ ...profile, ...updates });
+  }
+
+  function updateFavoritePCs(value: string) {
+    updateProfile({
+      favoritePCs: value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 8),
+    });
+  }
+
+  function togglePublicCollection(collection: string) {
+    updateProfile({
+      publicCollections: profile.publicCollections.includes(collection)
+        ? profile.publicCollections.filter((item) => item !== collection)
+        : [...profile.publicCollections, collection],
+    });
+  }
+
+  return (
+    <section className="mx-auto grid max-w-[1440px] gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-4">
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(135deg,rgba(255,255,255,0.075),rgba(255,255,255,0.014))] shadow-2xl">
+          <div
+            className="h-28 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.01))]"
+            style={{
+              backgroundImage: `radial-gradient(circle at 18% 30%, ${accent}44, transparent 26%), radial-gradient(circle at 78% 18%, rgba(56,213,255,0.22), transparent 28%), linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.01))`,
+            }}
+          />
+          <div className="p-6">
+            <div className="-mt-16 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex items-end gap-4">
+                <div
+                  className="grid h-24 w-24 place-items-center rounded-3xl border-4 border-[#111722] text-2xl font-black text-white shadow-2xl"
+                  style={{ backgroundColor: accent }}
+                >
+                  {profile.avatarInitials || "CR"}
+                </div>
+                <div className="pb-1">
+                  <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">
+                    {isProfile ? "Collector profile" : "Chase board"}
+                  </p>
+                  <h2 className="mt-1 text-4xl font-black leading-tight sm:text-5xl">
+                    {isProfile ? collectionName : "Cards to chase"}
+                  </h2>
+                  <p className="mt-1 text-sm font-bold text-sky-200">@{profile.handle}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={onBack}
+                  className="h-10 rounded-lg px-4 text-sm font-black text-white"
+                  style={{ backgroundColor: accent }}
+                >
+                  Home
+                </button>
+                <button
+                  onClick={() => navigator.clipboard?.writeText(`https://${publicUrl}`)}
+                  className="h-10 rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
+                >
+                  {isProfile ? "Copy profile link" : "Add chase card"}
+                </button>
+              </div>
+            </div>
+            <div className="mt-5 grid max-w-2xl gap-2 sm:grid-cols-3">
+              <MiniStat label="Cards" value={allCards.length.toString()} />
+              <MiniStat label="Public vaults" value={publicVaults.length.toString()} />
+              <MiniStat label={isProfile ? "Followers" : "Chases"} value={isProfile ? "0" : profileCards.length.toString()} />
+            </div>
+            {isProfile ? (
+              <p className="mt-4 max-w-3xl text-sm font-bold leading-6 text-slate-300">
+                {profile.bio}
+              </p>
+            ) : null}
+            <div className="mt-5 flex flex-wrap gap-2">
+              {(favoritePCs.length ? favoritePCs : ["Blue Jays PC", "Rookie cards", "Trade bait"]).map((team) => (
+                <span key={team} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-black text-slate-200">
+                  {team}
+                </span>
+              ))}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {["Theme: Arena", "Banner: Team glow", "Shelf: Featured first"].map((item) => (
+                <span key={item} className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-black text-slate-300">
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+                {isProfile ? "Featured shelf" : "Wishlist shelf"}
+              </p>
+              <h3 className="mt-1 text-2xl font-black">
+                {isProfile ? "Showcase cards" : "Cards to chase"}
+              </h3>
+            </div>
+            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
+              {profileCards.length} shown
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {profileCards.map((card) => (
+              <div key={card.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="mx-auto h-48">
+                  <CardPreview
+                    accent={accent}
+                    borderStyle={card.borderStyle ?? "Soft"}
+                    card={card}
+                    frameStyle={card.frameStyle ?? "Card"}
+                    imageFit="contain"
+                  />
+                </div>
+                <p className="mt-3 truncate text-sm font-black text-white">{card.player}</p>
+                <p className="truncate text-xs font-bold text-slate-500">{card.collection}</p>
+              </div>
+            ))}
+            {profileCards.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-white/10 p-6 text-sm font-bold text-slate-400">
+                Add cards to make this section useful.
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {isProfile ? (
+          <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
+            <ProfilePanel title="Public vaults">
+              <div className="grid gap-2">
+                {(visibleCollections.length ? visibleCollections : ["Main Collection"]).map((item) => (
+                  <div key={item} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                    <div>
+                      <p className="text-sm font-black text-white">{item}</p>
+                      <p className="mt-1 text-xs font-bold text-slate-500">
+                        {allCards.filter((card) => card.collection === item).length || allCards.length} cards
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => togglePublicCollection(item)}
+                      className={`rounded-full px-3 py-1 text-[11px] font-black ${
+                        publicVaults.includes(item)
+                          ? "text-white"
+                          : "border border-white/10 bg-white/5 text-slate-300"
+                      }`}
+                      style={publicVaults.includes(item) ? { backgroundColor: accent } : undefined}
+                    >
+                      {publicVaults.includes(item) ? "Public" : "Private"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </ProfilePanel>
+            <ProfilePanel title="Profile settings">
+              <div className="grid gap-3">
+                <EditField label="Handle">
+                  <input
+                    value={profile.handle}
+                    onChange={(event) => updateProfile({ handle: slugHandle(event.target.value) })}
+                    className="studio-field"
+                    placeholder="cardroster"
+                  />
+                </EditField>
+                <EditField label="Avatar">
+                  <input
+                    value={profile.avatarInitials}
+                    onChange={(event) => updateProfile({ avatarInitials: event.target.value.toUpperCase().slice(0, 3) })}
+                    className="studio-field"
+                    placeholder="CR"
+                  />
+                </EditField>
+                <EditField label="Bio">
+                  <textarea
+                    value={profile.bio}
+                    onChange={(event) => updateProfile({ bio: event.target.value.slice(0, 180) })}
+                    className="studio-field min-h-24 py-2"
+                    placeholder="What do you collect?"
+                  />
+                </EditField>
+                <EditField label="Favorite PCs">
+                  <input
+                    value={profile.favoritePCs.join(", ")}
+                    onChange={(event) => updateFavoritePCs(event.target.value)}
+                    className="studio-field"
+                    placeholder="Blue Jays, rookies, autos"
+                  />
+                </EditField>
+              </div>
+            </ProfilePanel>
+          </div>
+        ) : null}
+      </div>
+
+      <aside className="grid h-fit gap-4">
+        <CollectorProfileCard
+          accent={accent}
+          cardCount={allCards.length}
+          collectionName={collectionName}
+          profile={profile}
+          vaultCount={publicVaults.length}
+        />
+        <CollectorSearchPanel accent={accent} />
+        <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+            Links and proof
+          </p>
+          <div className="mt-3 grid gap-2">
+            {["Marketplace link", "Social contact", "Ownership proof"].map((item) => (
+              <div key={item} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-bold text-slate-300">
+                {item}
+              </div>
+            ))}
+          </div>
+        </div>
+      </aside>
+    </section>
+  );
+}
+
+function PublicFeed({
+  accent,
+  cards,
+  collectionName,
+  profile,
+  onOpenCard,
+  onOpenCollection,
+}: {
+  accent: string;
+  cards: Card[];
+  collectionName: string;
+  profile: CollectorProfile;
+  onOpenCard: (card: Card) => void;
+  onOpenCollection: () => void;
+}) {
+  const [likedCards, setLikedCards] = useState<string[]>([]);
+  const [savedCards, setSavedCards] = useState<string[]>([]);
+  const [wishlistCards, setWishlistCards] = useState<string[]>([]);
+  const [activeCommentId, setActiveCommentId] = useState("");
+  const [feedView, setFeedView] = useState<"Activity" | "Cards" | "Vaults" | "Members">("Activity");
+  const feedCards = cards.length ? cards : [];
+  const tradeCards = cards.filter((card) => card.status === "For Trade");
+  const teams = Array.from(new Set(cards.map((card) => card.team).filter(Boolean))).slice(0, 6);
+  const collections = Array.from(new Set(cards.map((card) => card.collection).filter(Boolean))).slice(0, 4);
+
+  function toggle(list: string[], setList: (items: string[]) => void, id: string) {
+    setList(list.includes(id) ? list.filter((item) => item !== id) : [...list, id]);
+  }
+
+  return (
+    <section className="mx-auto grid max-w-[1440px] gap-4 px-4 py-4 sm:px-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid gap-4">
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_15%_0%,rgba(255,255,255,0.12),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.075),rgba(255,255,255,0.014))] p-5 shadow-2xl">
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">
+                Public collector feed
+              </p>
+              <h2 className="mt-2 max-w-3xl text-4xl font-black leading-tight sm:text-5xl">
+                Scroll grails, pickups, trades, and PCs.
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-300">
+                Follow collectors, react to pickups, save chase ideas, and jump to trusted external sale links.
+              </p>
+            </div>
+            <div className="flex rounded-full border border-white/10 bg-black/25 p-1">
+              {(["Activity", "Cards", "Vaults", "Members"] as const).map((item) => (
+                <button
+                  key={item}
+                  onClick={() => setFeedView(item)}
+                  className={`h-9 rounded-full px-4 text-xs font-black transition ${
+                    feedView === item
+                      ? "text-white"
+                      : "text-slate-300 hover:bg-white/10"
+                  }`}
+                  style={feedView === item ? { background: `linear-gradient(135deg, ${accent}, #ff7a45)` } : undefined}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {feedCards.length ? (
+          <>
+            <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+                    Recent collector activity
+                  </p>
+                  <h3 className="mt-1 text-2xl font-black text-white">
+                    Pickups, likes, wishlists, and vault updates
+                  </h3>
+                </div>
+                <div className="relative">
+                  <input
+                    className="h-9 w-full rounded-full border border-white/10 bg-[#0b1018] px-4 text-xs font-bold text-white outline-none placeholder:text-slate-500 focus:border-white/40 sm:w-64"
+                    placeholder="Search cards, users, teams..."
+                  />
+                </div>
+              </div>
+              <div className="mt-4 grid gap-2">
+                {feedCards.slice(0, 5).map((card, index) => (
+                  <button
+                    key={`${card.id}-activity`}
+                    onClick={() => onOpenCard(card)}
+                    className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-2 text-left transition hover:bg-white/[0.06]"
+                  >
+                    <CleanCardThumb accent={accent} card={card} />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-white">
+                        {index % 3 === 0 ? "Added a new pickup" : index % 3 === 1 ? "Featured a grail" : "Updated a vault"}
+                      </p>
+                      <p className="truncate text-xs font-bold text-slate-500">
+                        {card.player} / {card.year} {card.brand} / {card.collection}
+                      </p>
+                    </div>
+                    <div className="hidden gap-3 text-xs font-black text-slate-500 sm:flex">
+                      <span>{12 + index * 7} likes</span>
+                      <span>{2 + index} comments</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+              <ProfilePanel title="Featured vault lists">
+                <div className="grid gap-3">
+                  {(collections.length ? collections : ["Main Collection"]).slice(0, 3).map((item) => {
+                    const vaultCards = feedCards.filter((card) => card.collection === item).slice(0, 4);
+                    const previewCards = vaultCards.length ? vaultCards : feedCards.slice(0, 4);
+
+                    return (
+                      <div key={item} className="rounded-xl border border-white/10 bg-white/[0.03] p-3 transition hover:-translate-y-0.5 hover:border-white/25">
+                        <div className="flex gap-2 overflow-hidden">
+                          {previewCards.map((card) => (
+                            <div key={`${item}-${card.id}`} className="w-16 shrink-0">
+                              <CleanCardThumb accent={accent} card={card} />
+                            </div>
+                          ))}
+                        </div>
+                        <p className="mt-3 text-sm font-black text-white">{item}</p>
+                        <p className="mt-1 text-xs font-bold text-slate-500">
+                          {previewCards.length} cards / public vault
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </ProfilePanel>
+              <ProfilePanel title="Members to watch">
+                <div className="grid gap-3">
+                  {(teams.length ? teams : ["Blue Jays", "Rookies", "Prospects"]).slice(0, 4).map((team, index) => (
+                    <div key={team} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div
+                          className="grid h-11 w-11 place-items-center rounded-full text-xs font-black text-white"
+                          style={{ backgroundColor: index % 2 ? "#38bdf8" : accent }}
+                        >
+                          CR
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-white">{team} collector</p>
+                          <p className="truncate text-xs font-bold text-slate-500">
+                            {24 + index * 13} cards / {6 + index * 4} followers
+                          </p>
+                        </div>
+                      </div>
+                      <button className="h-8 rounded-full border border-white/10 bg-white/5 px-3 text-[11px] font-black text-slate-300 hover:bg-white/10">
+                        Follow
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </ProfilePanel>
+            </div>
+          </>
+        ) : null}
+
+        {feedCards.length ? (
+          <div className="grid gap-4">
+            {feedCards.map((card, index) => {
+              const liked = likedCards.includes(card.id);
+              const saved = savedCards.includes(card.id);
+              const wishlisted = wishlistCards.includes(card.id);
+
+              return (
+                <article
+                  key={card.id}
+                  className="overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(135deg,rgba(21,27,36,0.98),rgba(8,12,18,0.98))] shadow-2xl"
+                >
+                  <div className="flex items-center justify-between gap-3 border-b border-white/10 p-4">
+                    <button className="flex min-w-0 items-center gap-3 text-left">
+                      <div
+                        className="grid h-11 w-11 place-items-center rounded-xl text-sm font-black text-white"
+                        style={{ backgroundColor: card.color || accent }}
+                      >
+                        {profile.avatarInitials || "CR"}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black text-white">
+                          {index % 2 === 0 ? collectionName : `${card.team || "Collector"} PC`}
+                        </p>
+                        <p className="truncate text-xs font-bold text-slate-500">
+                          @{index % 2 === 0 ? profile.handle : card.collection.toLowerCase().replaceAll(" ", "")} / {card.status}
+                        </p>
+                      </div>
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <span className="hidden rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-black text-slate-300 sm:inline-flex">
+                        {8 + index * 3} watching
+                      </span>
+                      <button className="h-8 rounded-full border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10">
+                        Follow
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => onOpenCard(card)}
+                    className="grid w-full gap-4 p-4 text-left lg:grid-cols-[minmax(280px,420px)_minmax(0,1fr)] lg:items-center"
+                  >
+                    <div className="mx-auto h-[min(68vh,560px)] w-full max-w-[390px] rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.10),transparent_42%),rgba(0,0,0,0.22)] p-4">
+                      <CardPreview
+                        accent={accent}
+                        borderStyle={card.borderStyle ?? "Soft"}
+                        card={card}
+                        frameStyle={card.frameStyle ?? "Card"}
+                        imageFit="contain"
+                        large
+                        tight
+                      />
+                    </div>
+                    <div className="min-w-0 rounded-2xl border border-white/10 bg-black/20 p-5">
+                      <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+                        Featured pickup
+                      </p>
+                      <h3 className="mt-2 text-3xl font-black leading-tight text-white">
+                        {card.player}
+                      </h3>
+                      <p className="mt-2 text-sm font-bold text-sky-200">{card.team}</p>
+                      <p className="mt-5 text-base font-black leading-7 text-slate-100">
+                        {card.year} {card.brand} {card.set}
+                      </p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {[card.collection, card.status, ...(card.tags ?? [])].slice(0, 5).map((item) => (
+                          <span key={item} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-black text-slate-300">
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="mt-5 grid grid-cols-3 gap-2">
+                        <MiniStat label="Likes" value={(18 + index * 9).toString()} />
+                        <MiniStat label="Comments" value={(3 + index).toString()} />
+                        <MiniStat label="Saves" value={(7 + index * 2).toString()} />
+                      </div>
+                    </div>
+                  </button>
+
+                  <div className="border-t border-white/10 bg-black/10 p-4">
+                    <div className="grid gap-2 sm:grid-cols-5">
+                      <FeedAction
+                        active={liked}
+                        label={liked ? "Admired" : "Admire"}
+                        count={18 + index * 9 + (liked ? 1 : 0)}
+                        onClick={() => toggle(likedCards, setLikedCards, card.id)}
+                      />
+                      <FeedAction
+                        active={saved}
+                        label={saved ? "Pinned" : "Pin"}
+                        count={7 + index * 2 + (saved ? 1 : 0)}
+                        onClick={() => toggle(savedCards, setSavedCards, card.id)}
+                      />
+                      <FeedAction
+                        active={wishlisted}
+                        label={wishlisted ? "Wishlisted" : "Wishlist"}
+                        count={wishlisted ? 1 : 0}
+                        onClick={() => toggle(wishlistCards, setWishlistCards, card.id)}
+                      />
+                      <FeedAction
+                        active={activeCommentId === card.id}
+                        label="Discuss"
+                        count={3 + index}
+                        onClick={() => setActiveCommentId(activeCommentId === card.id ? "" : card.id)}
+                      />
+                      {card.sourceUrl ? (
+                        <a
+                          href={card.sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10"
+                        >
+                          Listing
+                        </a>
+                      ) : (
+                        <FeedAction label="Trade" onClick={() => setActiveCommentId(card.id)} />
+                      )}
+                    </div>
+                    {activeCommentId === card.id ? (
+                      <div className="mt-3 rounded-2xl border border-white/10 bg-black/25 p-3">
+                        <textarea
+                          className="min-h-20 w-full resize-none rounded-xl border border-white/10 bg-[#0b1018] p-3 text-sm font-bold text-white outline-none placeholder:text-slate-500 focus:border-white/40"
+                          placeholder="Ask about the card, compliment the pickup, or coordinate off-platform..."
+                        />
+                        <div className="mt-2 flex flex-wrap justify-between gap-2">
+                          <p className="text-xs font-bold leading-5 text-slate-500">
+                            CardRoster can coordinate interest, but payment and deals stay off-site.
+                          </p>
+                          <button
+                            className="h-9 rounded-lg px-4 text-xs font-black text-white"
+                            style={{ backgroundColor: accent }}
+                          >
+                            Post comment
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-3xl border border-white/10 bg-[#151b24] p-8 text-center shadow-2xl">
+            <h3 className="text-2xl font-black text-white">Your feed needs cards.</h3>
+            <p className="mx-auto mt-3 max-w-xl text-sm font-bold leading-6 text-slate-400">
+              Upload a few cards first, then this becomes the prototype for public collector posts.
+            </p>
+            <button
+              onClick={onOpenCollection}
+              className="mt-5 h-10 rounded-lg px-4 text-sm font-black text-white"
+              style={{ backgroundColor: accent }}
+            >
+              Open collection
+            </button>
+          </div>
+        )}
+      </div>
+
+      <aside className="grid h-fit gap-4 xl:sticky xl:top-20">
+        <CollectorSearchPanel accent={accent} />
+        <ProfilePanel title="Trending PCs">
+          <div className="flex flex-wrap gap-2">
+            {(teams.length ? teams : ["Blue Jays", "Rookies", "Autos", "Prospects"]).map((team) => (
+              <span key={team} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-black text-slate-200">
+                {team}
+              </span>
+            ))}
+          </div>
+        </ProfilePanel>
+        <ProfilePanel title="Active marketplace signals">
+          <div className="grid gap-2">
+            <MarketplaceSignal label="Trade posts" value={tradeCards.length.toString()} />
+            <MarketplaceSignal label="External listings" value={cards.filter((card) => card.sourceUrl).length.toString()} />
+            <MarketplaceSignal label="Wishlisted" value={wishlistCards.length.toString()} />
+          </div>
+        </ProfilePanel>
+        <ProfilePanel title="Safety">
+          <div className="grid gap-2">
+            {["Private uploads by default", "Report public posts", "External deals only"].map((item) => (
+              <div key={item} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-bold text-slate-300">
+                {item}
+              </div>
+            ))}
+          </div>
+        </ProfilePanel>
+      </aside>
+    </section>
+  );
+}
+
+function FeedAction({
+  active = false,
+  count,
+  label,
+  onClick,
+}: {
+  active?: boolean;
+  count?: number;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex h-10 items-center justify-center rounded-full border px-3 text-xs font-black transition ${
+        active
+          ? "border-white/30 bg-white text-[#111722] shadow-[0_0_24px_rgba(255,255,255,0.12)]"
+          : "border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.025))] text-slate-200 hover:border-white/25 hover:bg-white/10"
+      }`}
+    >
+      <span>{label}</span>
+      {typeof count === "number" ? (
+        <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] ${active ? "bg-[#111722]/10 text-[#111722]" : "bg-black/25 text-slate-300"}`}>
+          {count}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function MarketplaceSignal({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+      <span className="text-sm font-bold text-slate-400">{label}</span>
+      <span className="text-sm font-black text-white">{value}</span>
+    </div>
+  );
+}
+
+function CollectorWorkbench({
+  accent,
+  cards,
+  collectionName,
+  onExport,
+  onOpenCard,
+  onOpenCollection,
+}: {
+  accent: string;
+  cards: Card[];
+  collectionName: string;
+  onExport: () => void;
+  onOpenCard: (card: Card) => void;
+  onOpenCollection: () => void;
+}) {
+  const gradingCards = cards.filter((card) =>
+    card.status === "Wishlist" ||
+    card.grade === "Raw" ||
+    card.gradingFee ||
+    card.certNumber,
+  );
+  const tradeCards = cards.filter((card) => card.status === "For Trade");
+  const missingStorage = cards.filter((card) => !card.storageLocation).length;
+  const missingNumbers = cards.filter((card) => !card.cardNumber).length;
+  const withLinks = cards.filter((card) => card.sourceUrl).length;
+
+  return (
+    <section className="mx-auto grid max-w-[1440px] gap-4 px-4 py-4 sm:px-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-4">
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_15%_0%,rgba(255,255,255,0.12),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.075),rgba(255,255,255,0.014))] p-6 shadow-2xl">
+          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">
+            Collector workbench
+          </p>
+          <h2 className="mt-2 max-w-3xl text-4xl font-black leading-tight sm:text-5xl">
+            Collection tools that keep the roster clean.
+          </h2>
+          <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-300">
+            Export, research, grading review, storage checks, and trade-ready cards in one workbench.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <button
+              onClick={onExport}
+              disabled={cards.length === 0}
+              className="h-10 rounded-lg px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+              style={{ backgroundColor: accent }}
+            >
+              Export CSV
+            </button>
+            <button
+              onClick={onOpenCollection}
+              className="h-10 rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
+            >
+              Open collection
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <WorkbenchMetric label="Cards" value={cards.length.toString()} />
+          <WorkbenchMetric label="Trade ready" value={tradeCards.length.toString()} />
+          <WorkbenchMetric label="Missing location" value={missingStorage.toString()} />
+          <WorkbenchMetric label="Missing card #" value={missingNumbers.toString()} />
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[1fr_0.95fr]">
+          <ProfilePanel title="Out for grading / review">
+            <div className="grid gap-2">
+              {gradingCards.slice(0, 6).map((card) => (
+                <button
+                  key={card.id}
+                  onClick={() => onOpenCard(card)}
+                  className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-2 text-left hover:bg-white/[0.06]"
+                >
+                  <CleanCardThumb accent={accent} card={card} />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-white">{card.player}</p>
+                    <p className="truncate text-xs font-bold text-slate-500">
+                      {card.year} {card.brand} {card.set}
+                    </p>
+                  </div>
+                  <GradingDecision card={card} />
+                </button>
+              ))}
+              {gradingCards.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-white/10 p-4 text-sm font-bold text-slate-400">
+                  Mark raw cards or add grading fees to build this queue.
+                </p>
+              ) : null}
+            </div>
+          </ProfilePanel>
+
+          <ProfilePanel title="Lookup links">
+            <div className="grid gap-2">
+              {(cards.slice(0, 5)).map((card) => (
+                <div key={card.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                  <p className="truncate text-sm font-black text-white">{card.player}</p>
+                  <p className="mt-1 truncate text-xs font-bold text-slate-500">
+                    {card.year} {card.brand} {card.set}
+                  </p>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <LookupLink href={soldSearchUrl(card)} label="eBay sold" />
+                    <LookupLink href={certLookupUrl(card)} label="Cert lookup" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ProfilePanel>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-2">
+          <ProfilePanel title="Trade and wishlist matching">
+            <div className="grid gap-2">
+              {tradeCards.slice(0, 4).map((card) => (
+                <button
+                  key={card.id}
+                  onClick={() => onOpenCard(card)}
+                  className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-left hover:bg-white/[0.06]"
+                >
+                  <p className="truncate text-sm font-black text-white">{card.player}</p>
+                  <p className="mt-1 truncate text-xs font-bold text-slate-500">{card.collection}</p>
+                </button>
+              ))}
+              {tradeCards.length === 0 ? (
+                <p className="text-sm font-bold leading-6 text-slate-400">
+                  Mark cards as For Trade to make them appear in matching and public coordination.
+                </p>
+              ) : null}
+            </div>
+          </ProfilePanel>
+
+          <ProfilePanel title="Roster cleanup">
+            <div className="grid gap-2">
+              <MarketplaceSignal label="Source links" value={`${withLinks}/${cards.length}`} />
+              <MarketplaceSignal label="Storage locations" value={`${cards.length - missingStorage}/${cards.length}`} />
+              <MarketplaceSignal label="Card numbers" value={`${cards.length - missingNumbers}/${cards.length}`} />
+            </div>
+          </ProfilePanel>
+        </div>
+      </div>
+
+      <aside className="grid h-fit gap-4 xl:sticky xl:top-20">
+        <CollectorProfileCard accent={accent} cardCount={cards.length} collectionName={collectionName} />
+        <ProfilePanel title="Quick actions">
+          <div className="grid gap-2">
+            <button onClick={onExport} disabled={cards.length === 0} className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10 disabled:opacity-40">
+              Export collection
+            </button>
+            <button onClick={onOpenCollection} className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10">
+              Review gallery
+            </button>
+          </div>
+        </ProfilePanel>
+        <ProfilePanel title="Next tools">
+          <div className="grid gap-2">
+            {["Spreadsheet import", "eBay links", "Cert lookup"].map((item) => (
+              <div key={item} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-bold text-slate-300">
+                {item}
+              </div>
+            ))}
+          </div>
+        </ProfilePanel>
+      </aside>
+    </section>
+  );
+}
+
+function WorkbenchMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
+      <p className="text-3xl font-black text-white">{value}</p>
+      <p className="mt-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
+    </div>
+  );
+}
+
+function GradingDecision({ card }: { card: Card }) {
+  const cost = moneyValue(card.purchasePrice) + moneyValue(card.gradingFee);
+  const value = cardValue(card);
+  const decision = !cost || !value ? "Review" : value > cost * 1.5 ? "Good" : value > cost ? "Close" : "Skip";
+  const color =
+    decision === "Good"
+      ? "text-emerald-300"
+      : decision === "Close"
+        ? "text-yellow-300"
+        : decision === "Skip"
+          ? "text-red-300"
+          : "text-slate-300";
+
+  return <span className={`text-xs font-black ${color}`}>{decision}</span>;
+}
+
+function LookupLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex h-8 items-center justify-center rounded-md border border-white/10 bg-white/5 px-2 text-[11px] font-black text-slate-200 hover:bg-white/10"
+    >
+      {label}
+    </a>
+  );
+}
+
+function CardResearchPanel({ card }: { card: Card }) {
+  const [marketMessage, setMarketMessage] = useState("");
+  const [marketValue, setMarketValue] = useState<number | null>(null);
+  const [marketListings, setMarketListings] = useState<
+    Array<{ itemWebUrl: string; price: number | null; title: string }>
+  >([]);
+  const [marketLoading, setMarketLoading] = useState(false);
+
+  async function scanEbayMarket() {
+    if (marketLoading) return;
+
+    setMarketLoading(true);
+    setMarketMessage("");
+    setMarketValue(null);
+    setMarketListings([]);
+
+    try {
+      const response = await fetch(`/api/ebay/search?q=${encodeURIComponent(cardSearchText(card))}`);
+      const body = await response.json();
+
+      if (!response.ok) {
+        throw new Error(body.error ?? "Unable to scan eBay market.");
+      }
+
+      setMarketValue(typeof body.suggestedValue === "number" ? body.suggestedValue : null);
+      setMarketListings(Array.isArray(body.listings) ? body.listings.slice(0, 3) : []);
+      setMarketMessage(
+        body.suggestedValue
+          ? "Market scan found active listing comps."
+          : "Market scan ran, but no priced listings came back.",
+      );
+    } catch (error) {
+      setMarketMessage(error instanceof Error ? error.message : "Unable to scan eBay market.");
+    } finally {
+      setMarketLoading(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+        Lookup links
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <LookupLink href={soldSearchUrl(card)} label="eBay sold" />
+        <LookupLink href={certLookupUrl(card)} label="Cert lookup" />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Detail label="All-in" value={formatMoney(moneyValue(card.purchasePrice) + moneyValue(card.gradingFee))} />
+        <Detail label="Grade call" value={gradingDecisionText(card)} />
+      </div>
+      <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+              eBay market scan
+            </p>
+            <p className="mt-1 text-xs font-bold leading-5 text-slate-400">
+              Active listing average now, sold comps once Marketplace Insights is enabled.
+            </p>
+          </div>
+          <button
+            onClick={scanEbayMarket}
+            disabled={marketLoading}
+            className="h-8 shrink-0 rounded-md border border-white/10 bg-white/5 px-3 text-[11px] font-black text-slate-200 hover:bg-white/10 disabled:opacity-50"
+          >
+            {marketLoading ? "Scanning" : "Scan"}
+          </button>
+        </div>
+        {marketMessage ? (
+          <p className="mt-2 text-xs font-bold text-slate-300">{marketMessage}</p>
+        ) : null}
+        {marketValue !== null ? (
+          <div className="mt-3">
+            <Detail label="Suggested" value={formatMoney(marketValue)} />
+          </div>
+        ) : null}
+        {marketListings.length ? (
+          <div className="mt-3 grid gap-2">
+            {marketListings.map((listing) => (
+              <a
+                key={`${listing.itemWebUrl}-${listing.title}`}
+                href={listing.itemWebUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-white/5"
+              >
+                <span className="block truncate text-white">{listing.title}</span>
+                <span>{listing.price ? formatMoney(listing.price) : "No price"}</span>
+              </a>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function CardDetailModal({
+  accent,
+  borderStyle,
+  card,
+  frameStyle,
+  onClose,
+  onNext,
+  onPrevious,
+  showMoney,
+}: {
+  accent: string;
+  borderStyle: BorderStyle;
+  card?: Card;
+  frameStyle: FrameStyle;
+  onClose: () => void;
+  onNext: () => void;
+  onPrevious: () => void;
+  showMoney: boolean;
+}) {
+  if (!card) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#05070b]/96 p-4 backdrop-blur-2xl">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_25%_18%,rgba(255,255,255,0.08),transparent_24%),linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:auto,52px_52px,52px_52px]" />
+      <div className="relative mx-auto grid min-h-full max-w-7xl gap-5 py-6 lg:grid-cols-[minmax(340px,430px)_minmax(0,1fr)] lg:items-center">
+        <div className="rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.12),transparent_42%),rgba(255,255,255,0.035)] p-4 shadow-[0_30px_90px_rgba(0,0,0,0.55)] sm:p-5">
+          <div className="mx-auto h-[min(70vh,620px)] max-h-[620px] max-w-[390px]">
+            <CardPreview
+              card={card}
+              accent={accent}
+              borderStyle={card.borderStyle ?? borderStyle}
+              frameStyle={card.frameStyle ?? frameStyle}
+              large
+              imageFit="contain"
+              tight
+            />
+          </div>
+        </div>
+        <div className="rounded-3xl border border-white/10 bg-[linear-gradient(135deg,rgba(17,23,34,0.96),rgba(7,10,15,0.96))] p-5 shadow-2xl sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+                Collector placard
+              </p>
+              <h2 className="mt-2 text-4xl font-black leading-[1.05] text-white sm:text-5xl">
+                {card.player}
+              </h2>
+              <p className="mt-2 text-base font-bold text-sky-200">{card.team}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="h-9 rounded-md border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10"
+            >
+              Close
+            </button>
+          </div>
+          <p className="mt-6 max-w-3xl text-xl font-black leading-8 text-white">
+            {card.year} {card.brand} {card.set}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-[#111722]">
+              {card.status}
+            </span>
+            {card.grade && card.grade !== "Raw" ? (
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-black text-slate-200">
+                {card.grade}
+              </span>
+            ) : null}
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-black text-slate-200">
+              {card.collection}
+            </span>
+          </div>
+          {card.notes ? (
+            <p className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4 text-sm font-bold leading-6 text-slate-300">
+              {card.notes}
+            </p>
+          ) : null}
+          <div className="mt-5 grid gap-2 sm:grid-cols-3">
+            <Detail label="Sport" value={card.sport} />
+            <Detail label="Year" value={card.year} />
+            <Detail label="Brand" value={card.brand} />
+            {showMoney ? (
+              <>
+                <Detail label="Value" value={formatMoney(cardValue(card))} />
+                <Detail label="Cost" value={formatMoney(moneyValue(card.purchasePrice))} />
+                <Detail label="Sale" value={card.saleStatus ?? "Holding"} />
+              </>
+            ) : null}
+          </div>
+          {card.tags?.length ? <TagRow tags={card.tags} /> : null}
+          <div className="mt-6 flex flex-wrap gap-2">
+            <button onClick={onPrevious} className="h-10 rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10">
+              Previous
+            </button>
+            <button onClick={onNext} className="h-10 rounded-lg px-4 text-sm font-black text-white hover:brightness-110" style={{ backgroundColor: accent }}>
+              Next
+            </button>
+            {card.sourceUrl ? (
+              <a href={card.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10">
+                Source
+              </a>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShowcaseOverlay({
+  accent,
+  borderStyle,
+  cards,
+  frameStyle,
+  onClose,
+}: {
+  accent: string;
+  borderStyle: BorderStyle;
+  cards: Card[];
+  frameStyle: FrameStyle;
+  onClose: () => void;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const activeCard = cards[activeIndex];
+
+  if (!activeCard) return null;
+
+  return (
+    <div className="fixed inset-0 z-40 overflow-hidden bg-[#030508]/95 text-white backdrop-blur-xl">
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:48px_48px] opacity-30" />
+      <div className="relative grid h-full grid-rows-[auto_1fr_auto] p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">
+              Showcase mode
+            </p>
+            <h2 className="mt-1 text-2xl font-black">{activeCard.collection}</h2>
+          </div>
+          <button onClick={onClose} className="h-9 rounded-md border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10">
+            Exit
+          </button>
+        </div>
+        <div className="grid min-h-0 gap-6 py-4 lg:grid-cols-[minmax(260px,430px)_minmax(0,1fr)] lg:items-center">
+          <div className="mx-auto h-[min(70vh,620px)] w-full max-w-[430px] rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.12),transparent_40%),rgba(255,255,255,0.03)] p-5">
+            <CardPreview
+              card={activeCard}
+              accent={accent}
+              borderStyle={activeCard.borderStyle ?? borderStyle}
+              frameStyle={activeCard.frameStyle ?? frameStyle}
+              large
+              imageFit="contain"
+            />
+          </div>
+          <div className="max-w-2xl">
+            <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+              Now viewing
+            </p>
+            <h3 className="mt-3 text-5xl font-black leading-tight">{activeCard.player}</h3>
+            <p className="mt-3 text-lg font-bold text-sky-200">{activeCard.team}</p>
+            <p className="mt-8 text-xl font-black leading-8">
+              {activeCard.year} {activeCard.brand} {activeCard.set}
+            </p>
+            {activeCard.tags?.length ? <TagRow tags={activeCard.tags} /> : null}
+            <div className="mt-8 flex gap-2">
+              <button onClick={() => setActiveIndex((activeIndex - 1 + cards.length) % cards.length)} className="h-11 rounded-md border border-white/10 bg-white/5 px-5 text-sm font-black text-slate-200 hover:bg-white/10">
+                Previous
+              </button>
+              <button onClick={() => setActiveIndex((activeIndex + 1) % cards.length)} className="h-11 rounded-md bg-white px-5 text-sm font-black text-[#111722] hover:bg-slate-200">
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
+          {cards.map((card, index) => (
+            <button
+              key={card.id}
+              onClick={() => setActiveIndex(index)}
+              className={`h-16 w-12 shrink-0 rounded border bg-cover bg-center ${
+                activeIndex === index ? "border-white" : "border-white/15 opacity-60"
+              }`}
+              style={{
+                backgroundImage: card.imageUrl ? `url(${card.imageUrl})` : undefined,
+                backgroundColor: card.imageUrl ? undefined : card.color,
+                backgroundPosition: imagePosition(card),
+                backgroundSize: `${card.imageZoom ?? 100}%`,
+                transform: imageRotateTransform(card),
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function readBorderStyle(value: string | null): BorderStyle {
@@ -746,6 +2920,48 @@ function readFrameStyle(value: string | null): FrameStyle {
   return "Card";
 }
 
+function readCollectorProfile(value: string | null): CollectorProfile {
+  if (!value) return defaultCollectorProfile;
+
+  try {
+    const parsed = JSON.parse(value) as Partial<CollectorProfile>;
+
+    return {
+      handle: slugHandle(parsed.handle ?? defaultCollectorProfile.handle),
+      bio: (parsed.bio ?? defaultCollectorProfile.bio).slice(0, 180),
+      avatarInitials: (parsed.avatarInitials ?? defaultCollectorProfile.avatarInitials)
+        .toUpperCase()
+        .slice(0, 3),
+      favoritePCs: sanitizeTextList(parsed.favoritePCs, defaultCollectorProfile.favoritePCs),
+      publicCollections: sanitizeTextList(
+        parsed.publicCollections,
+        defaultCollectorProfile.publicCollections,
+      ),
+    };
+  } catch {
+    return defaultCollectorProfile;
+  }
+}
+
+function sanitizeTextList(value: unknown, fallback: string[]) {
+  if (!Array.isArray(value)) return fallback;
+
+  const items = value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter(Boolean);
+
+  return items.length ? Array.from(new Set(items)).slice(0, 8) : fallback;
+}
+
+function slugHandle(value: string) {
+  const handle = value
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "")
+    .slice(0, 24);
+
+  return handle || "cardroster";
+}
+
 function HeroMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-white/10 bg-black/25 p-3">
@@ -757,39 +2973,219 @@ function HeroMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StyleSwatch({
-  active,
-  dark = false,
-  glass = false,
-  label,
-  rainbow = false,
-}: {
-  active: boolean;
-  dark?: boolean;
-  glass?: boolean;
-  label: string;
-  rainbow?: boolean;
-}) {
+function DashboardMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      className={`rounded-lg border p-2 ${
-        active ? "border-white/60" : "border-white/10"
-      } ${dark ? "bg-black" : "bg-white/10"}`}
-    >
-      <div
-        className={`h-12 rounded ${
-          rainbow
-            ? "bg-[linear-gradient(135deg,#ff4d1c,#f8e71c,#21c55d,#38bdf8,#8b5cf6)]"
-            : glass
-              ? "border border-white/30 bg-white/20"
-            : dark
-              ? "bg-[#111]"
-              : "bg-slate-100"
-        }`}
-      />
-      <p className={`mt-2 text-center text-[10px] font-black ${dark ? "text-yellow-200" : "text-white"}`}>
+    <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+      <p className="truncate text-2xl font-black text-white">{value}</p>
+      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
         {label}
       </p>
+    </div>
+  );
+}
+
+function SocialStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+      <p className="text-lg font-black text-white">{value}</p>
+      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function CollectorProfileCard({
+  accent,
+  cardCount,
+  collectionName,
+  profile = defaultCollectorProfile,
+  vaultCount = 1,
+}: {
+  accent: string;
+  cardCount: number;
+  collectionName: string;
+  profile?: CollectorProfile;
+  vaultCount?: number;
+}) {
+  const publicUrl = `cardroster.app/${profile.handle || "cardroster"}`;
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[linear-gradient(135deg,rgba(21,27,36,0.98),rgba(8,12,18,0.98))] p-4 shadow-xl">
+      <div className="flex items-center gap-3">
+        <div
+          className="grid h-12 w-12 place-items-center rounded-xl text-sm font-black text-white"
+          style={{ backgroundColor: accent }}
+        >
+          {profile.avatarInitials || "CR"}
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-lg font-black text-white">{collectionName}</p>
+          <p className="text-xs font-bold text-slate-500">@{profile.handle}</p>
+        </div>
+      </div>
+      {profile.bio ? (
+        <p className="mt-3 line-clamp-3 text-sm font-bold leading-6 text-slate-400">
+          {profile.bio}
+        </p>
+      ) : null}
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <MiniStat label="Cards" value={cardCount.toString()} />
+        <MiniStat label="Followers" value="0" muted />
+        <MiniStat label="Vaults" value={vaultCount.toString()} />
+      </div>
+      <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
+        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+          Share profile
+        </p>
+        <p className="mt-1 truncate text-xs font-bold text-sky-200">
+          {publicUrl}
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            onClick={() => navigator.clipboard?.writeText(`https://${publicUrl}`)}
+            className="h-8 rounded-md border border-white/10 bg-white/5 text-[11px] font-black text-slate-200 hover:bg-white/10"
+          >
+            Copy link
+          </button>
+          <button className="h-8 rounded-md border border-white/10 bg-white/5 text-[11px] font-black text-slate-200 hover:bg-white/10">
+            Find users
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfilePanel({
+  children,
+  title,
+}: {
+  children: React.ReactNode;
+  title: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
+      <p className="mb-3 text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function CollectorSearchPanel({ accent }: { accent: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
+      <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+        Collector network
+      </p>
+      <h3 className="mt-2 text-2xl font-black text-white">Find people and PCs</h3>
+      <div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-2">
+        <input
+          className="h-10 w-full rounded-lg border border-white/10 bg-[#0b1018] px-3 text-sm font-bold text-white outline-none placeholder:text-slate-500 focus:border-white/40"
+          placeholder="Search users, teams, players..."
+        />
+      </div>
+      <div className="mt-3 grid gap-2">
+        {[
+          "Follow collectors with matching PCs",
+          "Share public vault links",
+          "Message about trades or sales",
+          "Browse team and player communities",
+        ].map((item) => (
+          <div
+            key={item}
+            className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-bold text-slate-300"
+          >
+            <span
+              className="h-2.5 w-2.5 rounded-full"
+              style={{ backgroundColor: accent }}
+            />
+            {item}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SafetyPanel() {
+  const items = [
+    "Report card, profile, and comment",
+    "Image moderation before public posts",
+    "Private-by-default uploads",
+    "Verified seller links only",
+    "Ownership proof badges later",
+  ];
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
+      <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+        Trust & safety
+      </p>
+      <h3 className="mt-2 text-2xl font-black text-white">Built for public sharing</h3>
+      <p className="mt-3 text-sm font-bold leading-6 text-slate-400">
+        Public social features need moderation from day one. Uploads stay private
+        until shared, then media can be scanned and reported.
+      </p>
+      <div className="mt-4 grid gap-2">
+        {items.map((item) => (
+          <div
+            key={item}
+            className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-bold text-slate-300"
+          >
+            {item}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ExperienceTile({ copy, title }: { copy: string; title: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[linear-gradient(135deg,rgba(21,27,36,0.92),rgba(8,12,18,0.92))] p-4 shadow-xl">
+      <p className="text-lg font-black text-white">{title}</p>
+      <p className="mt-2 text-sm font-bold leading-6 text-slate-400">{copy}</p>
+    </div>
+  );
+}
+
+function DashboardPanel({
+  children,
+  title,
+}: {
+  children: React.ReactNode;
+  title: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
+      <p className="mb-3 text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+        {title}
+      </p>
+      <div className="grid gap-2">{children}</div>
+    </div>
+  );
+}
+
+function MiniStat({
+  label,
+  muted = false,
+  value,
+}: {
+  label: string;
+  muted?: boolean;
+  value: string;
+}) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+      <span className="block truncate text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+        {label}
+      </span>
+      <span className={`mt-1 block truncate text-sm font-black ${muted ? "text-slate-300" : "text-white"}`}>
+        {value}
+      </span>
     </div>
   );
 }
@@ -810,7 +3206,7 @@ function GrailDisplay({
   return (
     <button
       onClick={onSelect}
-      className="mb-4 grid w-full gap-5 overflow-hidden rounded-xl border border-white/10 bg-[radial-gradient(circle_at_18%_20%,rgba(255,255,255,0.09),transparent_28%),linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.01))] p-4 text-left shadow-2xl transition hover:border-white/20 lg:grid-cols-[230px_minmax(0,1fr)]"
+      className="mb-4 grid w-full gap-5 overflow-hidden rounded-xl border border-white/10 bg-[radial-gradient(circle_at_18%_28%,rgba(255,255,255,0.12),transparent_26%),radial-gradient(circle_at_70%_0%,rgba(56,189,248,0.08),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.065),rgba(255,255,255,0.012))] p-4 text-left shadow-2xl transition hover:border-white/20 lg:grid-cols-[240px_minmax(0,1fr)]"
     >
       <div className="h-[300px]">
         <CardPreview
@@ -821,10 +3217,15 @@ function GrailDisplay({
           large
         />
       </div>
-      <div className="self-center rounded-xl border border-white/10 bg-black/20 p-5">
-        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-          Grail display
-        </p>
+      <div className="self-center rounded-xl border border-white/10 bg-black/25 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+            Grail exhibit
+          </p>
+          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black text-slate-300">
+            {card.collection}
+          </span>
+        </div>
         <h3 className="mt-3 text-2xl font-black leading-tight text-white">
           {card.player}
         </h3>
@@ -832,8 +3233,131 @@ function GrailDisplay({
         <p className="mt-5 max-w-xl text-sm font-bold leading-6 text-slate-200">
           {card.year} {card.brand} {card.set}
         </p>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black text-[#111722]">
+            {card.status}
+          </span>
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black text-slate-300">
+            {card.grade}
+          </span>
+        </div>
       </div>
     </button>
+  );
+}
+
+function CollectionExhibit({
+  accent,
+  cards,
+  collection,
+  collections,
+  onSelectCollection,
+}: {
+  accent: string;
+  cards: Card[];
+  collection: string;
+  collections: string[];
+  onSelectCollection: (collection: string) => void;
+}) {
+  return (
+    <div className="mb-4 overflow-hidden rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(255,255,255,0.055),rgba(255,255,255,0.012))] p-4">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+            Collection exhibit
+          </p>
+          <h3 className="mt-1 text-2xl font-black text-white">
+            {collection === "All" ? "Full roster" : collection}
+          </h3>
+          <p className="mt-1 text-sm font-bold text-slate-400">
+            {cards.length} card{cards.length === 1 ? "" : "s"} on display
+          </p>
+        </div>
+        <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
+          {["All", ...collections].map((item) => (
+            <button
+              key={item}
+              onClick={() => onSelectCollection(item)}
+              className={`h-9 shrink-0 rounded-full px-3 text-xs font-black transition ${
+                collection === item
+                  ? "text-white"
+                  : "border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+              }`}
+              style={collection === item ? { backgroundColor: accent } : undefined}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FeaturedShelf({
+  accent,
+  cards,
+  onSelect,
+}: {
+  accent: string;
+  cards: Card[];
+  onSelect: (card: Card) => void;
+}) {
+  const emptySlots = Array.from({ length: Math.max(0, 5 - cards.length) });
+
+  return (
+    <div className="mb-4 rounded-xl border border-white/10 bg-[radial-gradient(circle_at_30%_0%,rgba(255,255,255,0.07),transparent_32%),rgba(0,0,0,0.18)] p-3">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+            Featured cards
+          </p>
+          <p className="mt-1 text-sm font-black text-white">
+            Favorites collectors see first
+          </p>
+        </div>
+        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
+          {cards.length}/5 filled
+        </span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
+        {cards.map((card) => (
+          <button
+            key={card.id}
+            onClick={() => onSelect(card)}
+            className="group rounded-lg border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.014))] p-2 text-left transition hover:-translate-y-0.5 hover:border-white/25"
+          >
+            <div className="mx-auto w-24 rounded-lg border border-white/10 bg-black/20 p-1.5">
+              <CleanCardThumb accent={accent} card={card} />
+            </div>
+            <p className="mt-2 truncate text-xs font-black leading-5 text-white">
+              {card.player}
+            </p>
+            <p className="truncate text-[11px] font-bold text-slate-500">
+              {card.year} {card.brand}
+            </p>
+            <div
+              className="mt-2 h-1 rounded-full"
+              style={{ backgroundColor: card.color || accent }}
+            />
+          </button>
+        ))}
+        {emptySlots.map((_, index) => (
+          <div
+            key={`empty-${index}`}
+            className="flex min-h-32 flex-col items-center justify-center rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-3 text-center"
+          >
+            <div
+              className="h-10 w-10 rounded-full border border-white/10 bg-white/5"
+              style={{ boxShadow: `0 0 28px ${accent}24` }}
+            />
+            <p className="mt-3 text-xs font-black text-slate-400">
+              Add favorite
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -855,7 +3379,7 @@ function EmptyGallery({
       <div className="grid gap-0 lg:grid-cols-[1fr_260px]">
         <div className="p-5">
           <h3 className="mt-2 text-2xl font-black text-white">
-            Start your vault.
+            Start your roster.
           </h3>
           <div className="mt-5 grid gap-2 sm:grid-cols-3">
             <VaultAction label="Upload images" />
@@ -932,21 +3456,6 @@ function QuickPanel({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ControlGroup({
-  children,
-  title,
-}: {
-  children: React.ReactNode;
-  title: string;
-}) {
-  return (
-    <div className="mt-3 space-y-1.5 first:mt-0">
-      <p className="text-xs font-bold text-slate-100">{title}</p>
-      {children}
-    </div>
-  );
-}
-
 function RailSection({
   children,
   title,
@@ -964,25 +3473,32 @@ function RailSection({
   );
 }
 
-function FilterButton({
-  active = false,
-  accent,
+function FilterSelect({
   label,
-  onClick,
+  onChange,
+  options,
+  value,
 }: {
-  active?: boolean;
-  accent: string;
   label: string;
-  onClick: () => void;
+  onChange: (value: string) => void;
+  options: string[];
+  value: string;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className="w-full rounded-md px-2.5 py-1.5 text-left text-xs font-bold text-slate-300 transition hover:bg-white/10 hover:text-white"
-      style={active ? { backgroundColor: accent, color: "white" } : undefined}
-    >
-      {label}
-    </button>
+    <label className="grid gap-1.5">
+      <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-9 w-full rounded-md border border-white/10 bg-[#0c111a] px-2.5 text-xs font-black text-white outline-none focus:border-white/40"
+      >
+        {options.map((item) => (
+          <option key={item}>{item}</option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -993,6 +3509,7 @@ function CardTile({
   frameStyle,
   mode,
   onClick,
+  onDoubleClick,
   selected,
 }: {
   accent: string;
@@ -1001,12 +3518,14 @@ function CardTile({
   frameStyle: FrameStyle;
   mode: DisplayMode;
   onClick: () => void;
+  onDoubleClick: () => void;
   selected: boolean;
 }) {
   if (mode === "Compact") {
     return (
       <button
         onClick={onClick}
+        onDoubleClick={onDoubleClick}
         className={`flex items-center justify-between gap-4 rounded-lg bg-[#151b26] p-2.5 text-left transition hover:-translate-y-0.5 ${
           selected ? "border-white/60" : "border-white/10"
         } ${borderClass(borderStyle)}`}
@@ -1016,7 +3535,12 @@ function CardTile({
             className="h-11 w-8 rounded border border-white/20 bg-cover bg-center"
             style={
               card.imageUrl
-                ? { backgroundImage: `url(${card.imageUrl})` }
+                ? {
+                    backgroundImage: `url(${card.imageUrl})`,
+                    backgroundPosition: imagePosition(card),
+                    backgroundSize: `${card.imageZoom ?? 100}%`,
+                    transform: `rotate(${card.imageRotation ?? 0}deg)`,
+                  }
                 : { backgroundColor: card.color }
             }
           />
@@ -1034,16 +3558,18 @@ function CardTile({
   return (
     <button
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       className={`group h-full rounded-xl bg-[#151b26] p-3 text-left transition hover:-translate-y-0.5 ${
         selected ? "border-white/60" : "border-white/10"
       } ${tileBorderClass(borderStyle)} ${
         mode === "Showcase"
-          ? "grid items-center gap-6 sm:grid-cols-[210px_minmax(0,1fr)]"
+          ? "grid items-center gap-5 sm:grid-cols-[250px_minmax(0,1fr)]"
           : "flex flex-col"
       }`}
     >
-      <div className={mode === "Showcase" ? "h-[280px]" : "h-[214px]"}>
+      <div className={mode === "Showcase" ? "h-[320px]" : "h-[220px]"}>
         <CardPreview
+          key={`${card.id}-${card.imageX ?? 50}-${card.imageY ?? 50}-${card.imageZoom ?? 100}-${card.imageRotation ?? 0}`}
           card={card}
           accent={accent}
           borderStyle={borderStyle}
@@ -1054,22 +3580,25 @@ function CardTile({
       <div
         className={
           mode === "Showcase"
-            ? "min-w-0 rounded-xl border border-white/10 bg-black/20 p-4"
+            ? "min-w-0 rounded-xl border border-white/10 bg-black/25 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
             : "mt-3 flex flex-1 flex-col"
         }
       >
         <div className="min-w-0">
-          <p className="text-[15px] font-black leading-tight text-white">
+          <p className={`${mode === "Showcase" ? "text-2xl" : "text-[15px]"} font-black leading-tight text-white`}>
             {card.player}
           </p>
-          <p className="mt-1 text-xs leading-5 text-slate-400">{card.team}</p>
+          <p className={`${mode === "Showcase" ? "mt-2 text-sm" : "mt-1 text-xs"} leading-5 text-sky-200/80`}>
+            {card.team}
+          </p>
         </div>
-        <p className="mt-3 text-xs font-bold leading-5 text-slate-200">
+        <p className={`${mode === "Showcase" ? "mt-5 text-base leading-7" : "mt-3 text-xs leading-5"} font-bold text-slate-100`}>
           {card.year} {card.brand} {card.set}
         </p>
         {card.grade && card.grade !== "Raw" ? (
-          <p className="mt-1 text-xs text-slate-500">{card.grade}</p>
+          <p className="mt-1 text-xs font-bold text-slate-500">{card.grade}</p>
         ) : null}
+        {card.tags?.length ? <TagRow tags={card.tags} /> : null}
       </div>
     </button>
   );
@@ -1080,20 +3609,28 @@ function CardPreview({
   borderStyle,
   card,
   frameStyle,
+  imageFit = "cover",
   large = false,
+  tight = false,
 }: {
   accent: string;
   borderStyle: BorderStyle;
   card: Card;
   frameStyle: FrameStyle;
+  imageFit?: "cover" | "contain";
   large?: boolean;
+  tight?: boolean;
 }) {
   const cardTitle = [card.player, card.team].filter(Boolean).join(" | ");
 
   return (
     <div
-      className={`flex h-full items-center justify-center overflow-visible rounded-lg bg-black/20 p-2.5 ${previewBorderClass(borderStyle)}`}
-      style={previewBorderStyle(borderStyle, card.color || accent)}
+      className={
+        tight
+          ? "flex h-full items-center justify-center overflow-visible rounded-2xl bg-transparent p-0"
+          : `flex h-full items-center justify-center overflow-visible rounded-lg bg-black/20 p-2.5 ${previewBorderClass(borderStyle)}`
+      }
+      style={tight ? undefined : previewBorderStyle(borderStyle, card.color || accent)}
     >
       <div className="aspect-[5/7] h-full max-h-full">
         <div
@@ -1112,7 +3649,15 @@ function CardPreview({
                   fill
                   unoptimized
                   sizes={large ? "280px" : "220px"}
-                  className="object-cover"
+                  className={imageFit === "contain" ? "object-contain" : "object-cover"}
+                  style={{
+                    objectPosition: imagePosition(card),
+                    transform:
+                      imageFit === "contain"
+                        ? imageRotateTransform(card)
+                        : `${imageScaleTransform(card)} ${imageRotateTransform(card)}`,
+                    transformOrigin: imagePosition(card),
+                  }}
                 />
               </div>
             ) : (
@@ -1138,6 +3683,74 @@ function CardPreview({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function MiniWallPreview({ accent, card }: { accent: string; card: Card }) {
+  const cardTitle = [card.player, card.team].filter(Boolean).join(" | ");
+
+  return (
+    <div className="relative h-full w-full overflow-hidden rounded-lg border border-white/10 bg-black/30 p-1.5 shadow-[0_12px_24px_rgba(0,0,0,0.35)]">
+      <div
+        className="absolute inset-x-3 bottom-1 h-1 rounded-full"
+        style={{
+          background: `linear-gradient(90deg, ${card.color || accent}, #f8e71c, #20e3b2, #38bdf8, #ec4899)`,
+        }}
+      />
+      <div className="relative mx-auto h-[calc(100%-8px)] max-w-[62px] overflow-hidden rounded-md bg-[#0d111a]">
+        {card.imageUrl ? (
+          <Image
+            src={card.imageUrl}
+            alt={cardTitle || "Card image"}
+            fill
+            unoptimized
+            sizes="72px"
+            className="object-contain"
+            style={{ transform: imageRotateTransform(card) }}
+          />
+        ) : (
+          <div
+            className="grid h-full place-items-center text-[10px] font-black text-white"
+            style={{ backgroundColor: card.color || accent }}
+          >
+            CR
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CleanCardThumb({ accent, card }: { accent: string; card: Card }) {
+  const cardTitle = [card.player, card.team].filter(Boolean).join(" | ");
+
+  return (
+    <div className="relative aspect-[5/7] w-full overflow-hidden rounded-lg bg-[#0d111a] shadow-[0_14px_30px_rgba(0,0,0,0.42)] ring-1 ring-white/15">
+      <div
+        className="absolute inset-x-0 bottom-0 z-10 h-1"
+        style={{
+          background: `linear-gradient(90deg, ${card.color || accent}, #20e3b2, #38bdf8, #ec4899)`,
+        }}
+      />
+      {card.imageUrl ? (
+        <Image
+          src={card.imageUrl}
+          alt={cardTitle || "Card image"}
+          fill
+          unoptimized
+          sizes="120px"
+          className="object-contain"
+          style={{ transform: imageRotateTransform(card) }}
+        />
+      ) : (
+        <div
+          className="grid h-full place-items-center p-3 text-center text-xs font-black text-white"
+          style={{ backgroundColor: card.color || accent }}
+        >
+          {card.player || "Card"}
+        </div>
+      )}
     </div>
   );
 }
@@ -1180,11 +3793,11 @@ function borderClass(borderStyle: BorderStyle) {
 
 function frameShellClass(frameStyle: FrameStyle) {
   if (frameStyle === "Gradient") {
-    return "rounded-2xl p-2 shadow-2xl";
+    return "rounded-2xl p-1.5 shadow-2xl";
   }
 
   if (frameStyle === "Sunset") {
-    return "rounded-2xl p-2 shadow-2xl";
+    return "rounded-2xl p-1.5 shadow-2xl";
   }
 
   if (frameStyle === "Stand") {
@@ -1212,7 +3825,7 @@ function frameShellStyle(frameStyle: FrameStyle, accent: string) {
 
 function innerFrameClass(frameStyle: FrameStyle) {
   if (frameStyle === "Gradient" || frameStyle === "Sunset") {
-    return "border border-black/35";
+    return "border border-white/10";
   }
 
   if (frameStyle === "Stand") {
@@ -1224,7 +3837,7 @@ function innerFrameClass(frameStyle: FrameStyle) {
 
 function imageWindowClass(frameStyle: FrameStyle) {
   if (frameStyle === "Gradient" || frameStyle === "Sunset") {
-    return "bg-black/10";
+    return "bg-transparent";
   }
 
   if (frameStyle === "Stand") {
@@ -1234,10 +3847,99 @@ function imageWindowClass(frameStyle: FrameStyle) {
   return "bg-[#0d111a]";
 }
 
+function imagePosition(card: Card) {
+  return `${card.imageX ?? 50}% ${card.imageY ?? 50}%`;
+}
+
+function imageScaleTransform(card: Card) {
+  return `scale(${(card.imageZoom ?? 100) / 100})`;
+}
+
+function imageRotateTransform(card: Card) {
+  return `rotate(${card.imageRotation ?? 0}deg)`;
+}
+
+function csvCell(value: Card[keyof Card]) {
+  const text = Array.isArray(value)
+    ? value.join("|")
+    : value === undefined || value === null
+      ? ""
+      : String(value);
+
+  return `"${text.replaceAll("\"", "\"\"")}"`;
+}
+
+function toggleTag(tags: CardTag[] | undefined, tag: CardTag) {
+  const nextTags = sanitizeTags(tags);
+  return nextTags.includes(tag)
+    ? nextTags.filter((item) => item !== tag)
+    : [...nextTags, tag];
+}
+
+function rotateValue(current: number, change: number) {
+  const next = ((current + change) % 360 + 360) % 360;
+  return next > 180 ? next - 360 : next;
+}
+
+function sanitizeTags(tags: CardTag[] | undefined) {
+  return (tags ?? []).filter((tag): tag is CardTag =>
+    cardTags.includes(tag as CardTag),
+  );
+}
+
 function moneyValue(value?: string) {
   if (!value) return 0;
   const number = Number(value.replace(/[^0-9.]/g, ""));
   return Number.isFinite(number) ? number : 0;
+}
+
+function cardValue(card: Card) {
+  return moneyValue(card.estimatedValue) || moneyValue(card.purchasePrice);
+}
+
+function cardSearchText(card: Card) {
+  return [
+    card.year,
+    card.brand,
+    card.set,
+    card.player,
+    card.cardNumber,
+    card.parallel,
+    card.grade && card.grade !== "Raw" ? card.grade : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function soldSearchUrl(card: Card) {
+  return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(cardSearchText(card))}&LH_Sold=1&LH_Complete=1`;
+}
+
+function certLookupUrl(card: Card) {
+  const grader = (card.gradingCompany || card.grade || "").toLowerCase();
+  const cert = encodeURIComponent(card.certNumber || "");
+
+  if (grader.includes("bgs") || grader.includes("beckett")) {
+    return `https://www.beckett.com/grading/card-lookup?item_type=BGS&item_id=${cert}`;
+  }
+
+  if (grader.includes("sgc")) {
+    return "https://www.gosgc.com/cert-code-lookup";
+  }
+
+  return cert
+    ? `https://www.psacard.com/cert/${cert}`
+    : "https://www.psacard.com/cert";
+}
+
+function gradingDecisionText(card: Card) {
+  const cost = moneyValue(card.purchasePrice) + moneyValue(card.gradingFee);
+  const value = cardValue(card);
+
+  if (!cost || !value) return "Review";
+  if (value > cost * 1.5) return "Good";
+  if (value > cost) return "Close";
+  return "Skip";
 }
 
 function formatMoney(value: number) {
@@ -1256,6 +3958,52 @@ function Detail({ label, value }: { label: string; value: string }) {
       </p>
       <p className="mt-1 text-sm font-bold text-white">{value}</p>
     </div>
+  );
+}
+
+function TagRow({ tags }: { tags: CardTag[] }) {
+  return (
+    <div className="mt-3 flex flex-wrap gap-1.5">
+      {tags.slice(0, 4).map((tag) => (
+        <span
+          key={tag}
+          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black text-slate-300"
+        >
+          {tag}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function RangeField({
+  label,
+  max = 100,
+  min = 0,
+  onChange,
+  value,
+}: {
+  label: string;
+  max?: number;
+  min?: number;
+  onChange: (value: number) => void;
+  value: number;
+}) {
+  return (
+    <label>
+      <div className="mb-1 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+        <span>{label}</span>
+        <span>{value}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="w-full accent-white"
+      />
+    </label>
   );
 }
 
