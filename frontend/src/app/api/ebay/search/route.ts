@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { EbayConfigError, getEbayAppToken } from "@/lib/ebay";
+import { checkRateLimit, requestIdentifier } from "@/lib/rate-limit";
 
 type EbaySearchItem = {
   title?: string;
@@ -15,6 +17,18 @@ type EbaySearchItem = {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q")?.trim() ?? "";
+  const rateLimit = checkRateLimit({
+    identifier: `ebay-search:${requestIdentifier(request)}`,
+    limit: 20,
+    windowMs: 60_000,
+  });
+
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many eBay market scans. Try again in a minute." },
+      { status: 429 },
+    );
+  }
 
   if (query.length < 3) {
     return NextResponse.json(
@@ -23,29 +37,30 @@ export async function GET(request: Request) {
     );
   }
 
-  const clientId = process.env.EBAY_CLIENT_ID;
-  const clientSecret = process.env.EBAY_CLIENT_SECRET;
+  let response: Response;
 
-  if (!clientId || !clientSecret) {
+  try {
+    const token = await getEbayAppToken();
+    response = await fetch(
+      `https://api.ebay.com/buy/browse/v1/item_summary/search?q=${encodeURIComponent(query)}&category_ids=212&limit=12`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+        },
+      },
+    );
+  } catch (error) {
     return NextResponse.json(
       {
         error:
-          "eBay market search is ready, but EBAY_CLIENT_ID and EBAY_CLIENT_SECRET are not set yet.",
+          error instanceof EbayConfigError
+            ? "eBay market search is ready, but the server eBay credentials are not configured yet."
+            : "Unable to connect to eBay right now.",
       },
-      { status: 501 },
+      { status: error instanceof EbayConfigError ? 501 : 502 },
     );
   }
-
-  const token = await getEbayToken(clientId, clientSecret);
-  const response = await fetch(
-    `https://api.ebay.com/buy/browse/v1/item_summary/search?q=${encodeURIComponent(query)}&category_ids=212&limit=12`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
-      },
-    },
-  );
 
   if (!response.ok) {
     return NextResponse.json(
@@ -75,30 +90,4 @@ export async function GET(request: Request) {
     suggestedValue,
     listings,
   });
-}
-
-async function getEbayToken(clientId: string, clientSecret: string) {
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-  const response = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${credentials}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      scope: "https://api.ebay.com/oauth/api_scope",
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error("Unable to authenticate with eBay.");
-  }
-
-  const body = (await response.json()) as { access_token?: string };
-  if (!body.access_token) {
-    throw new Error("eBay did not return an access token.");
-  }
-
-  return body.access_token;
 }
