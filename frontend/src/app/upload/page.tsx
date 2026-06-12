@@ -12,12 +12,19 @@ type CardDraft = {
   imageUrl: string;
   sourceUrl?: string;
   sourceName?: string;
+  sourcePrice?: string;
+  sourcePriceLabel?: string;
+  sourceListingType?: string;
+  sourceMarketplace?: string;
+  sourceConfidence?: number;
   player: string;
   sport: string;
   team: string;
   year: string;
   brand: string;
   set: string;
+  cardNumber: string;
+  parallel: string;
   status: CardStatus;
   grade: string;
   color: string;
@@ -35,9 +42,24 @@ type CardDraft = {
   imageRotation: number;
 };
 
-const sports = ["Basketball", "Baseball", "Football", "Hockey", "Soccer"];
-const brands = ["Topps", "Panini", "Upper Deck", "Bowman", "Fleer", "Donruss"];
-const grades = ["Raw", "PSA 10", "PSA 9", "BGS 9.5", "BGS 9", "SGC 10", "SGC 9.5"];
+const sports = ["Basketball", "Baseball", "Football", "Hockey", "Soccer", "Pokemon", "Magic"];
+const brands = [
+  "Topps",
+  "Panini",
+  "Upper Deck",
+  "Bowman",
+  "Fleer",
+  "Donruss",
+  "Prizm",
+  "Select",
+  "Mosaic",
+  "Optic",
+  "Leaf",
+  "Score",
+  "Pokemon",
+  "Magic",
+];
+const grades = ["Raw", "PSA 10", "PSA 9", "BGS 9.5", "BGS 9", "SGC 10", "SGC 9.5", "CGC 10", "CGC 9.5"];
 const statuses: CardStatus[] = ["Vaulted", "Wishlist", "For Trade"];
 const saleStatuses = ["Holding", "Listed", "Sold"] as const;
 const frameStyles = ["Card", "Gradient", "Sunset", "Stand"] as const;
@@ -107,6 +129,8 @@ export default function UploadPage() {
           year: yearFromFile(file.name),
           brand: brandFromFile(file.name) || batchBrand,
           set: "",
+          cardNumber: "",
+          parallel: "",
           status: "Vaulted" as CardStatus,
           grade: batchGrade,
           color: colors[index % colors.length],
@@ -157,18 +181,33 @@ export default function UploadPage() {
         imageUrl: listing.imageUrl,
         sourceUrl: listing.itemWebUrl ?? cleanUrl,
         sourceName: "eBay",
-        player: playerFromTitle(title),
-        sport: sportFromTitle(title) || batchSport,
-        team: teamFromTitle(title),
-        year: yearFromFile(title),
-        brand: brandFromFile(title) || listing.brand || batchBrand,
-        set: setFromTitle(title),
+        sourcePrice: listing.price ?? "",
+        sourcePriceLabel: listing.priceLabel ?? "",
+        sourceListingType: listing.listingType ?? "eBay listing",
+        sourceMarketplace: listing.marketplaceId ?? "",
+        sourceConfidence: importConfidence({
+          brand: listing.brand ?? "",
+          imageUrl: listing.imageUrl ?? "",
+          player: listing.player ?? "",
+          set: listing.set ?? "",
+          sport: listing.sport ?? "",
+          team: listing.team ?? "",
+          year: listing.year ?? "",
+        }),
+        player: listing.player || playerFromTitle(title),
+        sport: listing.sport || sportFromTitle(title) || batchSport,
+        team: listing.team || teamFromTitle(title),
+        year: listing.year || yearFromFile(title),
+        brand: listing.brand || brandFromFile(title) || batchBrand,
+        set: listing.set || setFromTitle(title),
+        cardNumber: listing.cardNumber ?? "",
+        parallel: listing.parallel ?? "",
         status: "Vaulted",
         grade: gradeFromTitle(title),
         color: colors[drafts.length % colors.length],
         collection: batchCollection || collections[0] || "Main Collection",
         estimatedValue: showMoney ? (listing.price ?? "") : "",
-        purchasePrice: showMoney ? (listing.price ?? "") : "",
+        purchasePrice: "",
         salePrice: "",
         saleStatus: "Holding",
         frameStyle: batchFrame,
@@ -250,6 +289,8 @@ export default function UploadPage() {
       year: draft.year || "Unknown Year",
       brand: draft.brand,
       set: draft.set || "Base Set",
+      cardNumber: draft.cardNumber,
+      parallel: draft.parallel,
       status: draft.status,
       grade: draft.grade,
       color: draft.color,
@@ -263,6 +304,11 @@ export default function UploadPage() {
       imageUrl: draft.imageUrl,
       sourceUrl: draft.sourceUrl,
       sourceName: draft.sourceName,
+      sourcePrice: draft.sourcePrice,
+      sourcePriceLabel: draft.sourcePriceLabel,
+      sourceListingType: draft.sourceListingType,
+      sourceMarketplace: draft.sourceMarketplace,
+      sourceConfidence: draft.sourceConfidence,
       tags: draft.tags,
       imageX: draft.imageX,
       imageY: draft.imageY,
@@ -322,7 +368,7 @@ export default function UploadPage() {
                 Drop, detect, crop, and save.
               </h1>
               <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-300">
-                Upload card photos now, then use eBay listing import once your developer access is ready.
+                Upload card photos or paste an active eBay listing to prefill the draft, then review every field before saving.
               </p>
               <div className="mt-5 grid max-w-2xl gap-2 sm:grid-cols-3">
                 <UploadStat label="Drafts" value={drafts.length.toString()} />
@@ -543,6 +589,24 @@ export default function UploadPage() {
                       <p className="mt-0.5 truncate text-[10px] font-bold text-slate-500">
                         {draft.fileName}
                       </p>
+                      {draft.sourceUrl ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black text-slate-300">
+                            {draft.sourceListingType ?? "eBay listing"}
+                          </span>
+                          {draft.sourcePrice ? (
+                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black text-slate-300">
+                              {draft.sourcePriceLabel ? `${draft.sourcePriceLabel}: ` : ""}
+                              {draft.sourcePrice}
+                            </span>
+                          ) : null}
+                          {draft.sourceMarketplace ? (
+                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black text-slate-300">
+                              {draft.sourceMarketplace.replace("EBAY_", "eBay ")}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
@@ -560,6 +624,9 @@ export default function UploadPage() {
                             Possible duplicate
                           </p>
                         ) : null}
+                        <p className={`mt-1 inline-flex rounded-full border px-2 py-1 text-[10px] font-black ${draftCompleteness(draft).className}`}>
+                          {draftCompleteness(draft).label}
+                        </p>
                       </div>
                       <button
                         onClick={() => removeDraft(draft.id)}
@@ -568,6 +635,22 @@ export default function UploadPage() {
                         Remove
                       </button>
                     </div>
+                    <ImportIntelligencePanel
+                      draft={draft}
+                      duplicate={duplicateWarning(draft, savedCards, drafts)}
+                      onUsePriceAsCost={() => {
+                        if (draft.sourcePrice) {
+                          updateDraft(draft.id, "purchasePrice", draft.sourcePrice);
+                        }
+                      }}
+                      onUsePriceAsValue={() => {
+                        if (draft.sourcePrice) {
+                          updateDraft(draft.id, "estimatedValue", draft.sourcePrice);
+                        }
+                      }}
+                      onMarkListed={() => updateDraft(draft.id, "saleStatus", "Listed")}
+                      onMarkTrade={() => updateDraft(draft.id, "status", "For Trade")}
+                    />
                     <div className="grid gap-2 sm:grid-cols-2">
                       <Field label="Player">
                         <input
@@ -654,6 +737,28 @@ export default function UploadPage() {
                           placeholder="Base Set, Rookie, Prizm..."
                           className="field"
                           list="set-suggestions"
+                        />
+                      </Field>
+
+                      <Field label="Card #">
+                        <input
+                          value={draft.cardNumber}
+                          onChange={(event) =>
+                            updateDraft(draft.id, "cardNumber", event.target.value)
+                          }
+                          placeholder="#144"
+                          className="field"
+                        />
+                      </Field>
+
+                      <Field label="Parallel">
+                        <input
+                          value={draft.parallel}
+                          onChange={(event) =>
+                            updateDraft(draft.id, "parallel", event.target.value)
+                          }
+                          placeholder="Refractor, holo, gold..."
+                          className="field"
                         />
                       </Field>
 
@@ -887,11 +992,11 @@ function UploadCardPreview({ draft }: { draft: CardDraft }) {
           }}
         >
           <div
-            className="h-full bg-cover bg-center"
+            className="h-full bg-center bg-no-repeat"
             style={{
               backgroundImage: `url(${draft.imageUrl})`,
               backgroundPosition: `${draft.imageX}% ${draft.imageY}%`,
-              backgroundSize: `${draft.imageZoom}%`,
+              backgroundSize: draft.imageZoom === 100 ? "contain" : `${draft.imageZoom}%`,
               transform: `rotate(${draft.imageRotation}deg)`,
             }}
           />
@@ -925,6 +1030,174 @@ function UploadStat({ label, value }: { label: string; value: string }) {
       <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
         {label}
       </p>
+    </div>
+  );
+}
+
+function ImportIntelligencePanel({
+  draft,
+  duplicate,
+  onMarkListed,
+  onMarkTrade,
+  onUsePriceAsCost,
+  onUsePriceAsValue,
+}: {
+  draft: CardDraft;
+  duplicate: boolean;
+  onMarkListed: () => void;
+  onMarkTrade: () => void;
+  onUsePriceAsCost: () => void;
+  onUsePriceAsValue: () => void;
+}) {
+  const [visionMessage, setVisionMessage] = useState("");
+  const [visionSuggestions, setVisionSuggestions] = useState<
+    Record<string, string | undefined>
+  >({});
+  const [isScanning, setIsScanning] = useState(false);
+  const score = draft.sourceConfidence ?? importConfidence(draft);
+  const missing = missingDraftFields(draft);
+  const scoreColor =
+    score >= 85
+      ? "text-emerald-200"
+      : score >= 65
+        ? "text-amber-200"
+        : "text-red-200";
+
+  return (
+    <div className="mb-3 rounded-xl border border-white/10 bg-black/20 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+            Import intelligence
+          </p>
+          <p className={`mt-1 text-sm font-black ${scoreColor}`}>
+            {score}% confidence
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {duplicate ? (
+            <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[10px] font-black text-amber-100">
+              Duplicate risk
+            </span>
+          ) : null}
+          {draft.sourcePrice ? (
+            <span className="rounded-full border border-sky-300/20 bg-sky-300/10 px-2 py-1 text-[10px] font-black text-sky-100">
+              {draft.sourcePriceLabel || "Listing"} {draft.sourcePrice}
+            </span>
+          ) : null}
+        </div>
+      </div>
+      {missing.length ? (
+        <p className="mt-2 text-xs font-bold leading-5 text-slate-400">
+          Check {missing.join(", ")} before saving.
+        </p>
+      ) : (
+        <p className="mt-2 text-xs font-bold leading-5 text-slate-400">
+          Core identity fields are filled. Verify the image and price before saving.
+        </p>
+      )}
+      <div className="mt-3 grid gap-2 sm:grid-cols-4">
+        <button
+          type="button"
+          onClick={onUsePriceAsValue}
+          disabled={!draft.sourcePrice}
+          className="h-8 rounded-md border border-white/10 bg-white/5 px-2 text-[10px] font-black text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Use as value
+        </button>
+        <button
+          type="button"
+          onClick={onUsePriceAsCost}
+          disabled={!draft.sourcePrice}
+          className="h-8 rounded-md border border-white/10 bg-white/5 px-2 text-[10px] font-black text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Use as cost
+        </button>
+        <button
+          type="button"
+          onClick={onMarkTrade}
+          className="h-8 rounded-md border border-white/10 bg-white/5 px-2 text-[10px] font-black text-slate-200 hover:bg-white/10"
+        >
+          For trade
+        </button>
+        <button
+          type="button"
+          onClick={onMarkListed}
+          className="h-8 rounded-md border border-white/10 bg-white/5 px-2 text-[10px] font-black text-slate-200 hover:bg-white/10"
+        >
+          Listed
+        </button>
+      </div>
+      <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+        <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+              OCR and image checks
+            </p>
+            <p className="mt-1 text-xs font-bold leading-5 text-slate-400">
+              Server-side scan path is ready for a vision provider. Keys stay in
+              Vercel only.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              if (isScanning) return;
+
+              setIsScanning(true);
+              setVisionMessage("");
+              setVisionSuggestions({});
+
+              try {
+                const response = await fetch("/api/vision/card", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    imageUrl: draft.imageUrl,
+                    sourceUrl: draft.sourceUrl,
+                    title: draft.fileName,
+                  }),
+                });
+                const result = await response.json();
+
+                setVisionMessage(
+                  result.message ??
+                    result.error ??
+                    "Vision scan returned no message.",
+                );
+                setVisionSuggestions(result.suggestions ?? {});
+              } catch {
+                setVisionMessage("Vision scan failed. Try again later.");
+              } finally {
+                setIsScanning(false);
+              }
+            }}
+            className="h-8 shrink-0 rounded-md border border-white/10 bg-white/5 px-3 text-[10px] font-black text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={isScanning}
+          >
+            {isScanning ? "Scanning..." : "Vision scan"}
+          </button>
+        </div>
+        {visionMessage ? (
+          <p className="mt-2 text-xs font-bold leading-5 text-slate-400">
+            {visionMessage}
+          </p>
+        ) : null}
+        {Object.values(visionSuggestions).some(Boolean) ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {Object.entries(visionSuggestions).map(([key, value]) =>
+              value ? (
+                <span
+                  key={key}
+                  className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-[10px] font-black text-slate-300"
+                >
+                  {key}: {value}
+                </span>
+              ) : null,
+            )}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -975,7 +1248,7 @@ function tagGuesses(value: string) {
   const lower = value.toLowerCase();
   const tags: CardTag[] = [];
 
-  if (/\b(rookie| rc )\b/.test(lower)) tags.push("Rookie");
+  if (/\b(rookie| rc |rc)\b/.test(lower)) tags.push("Rookie");
   if (/\b(auto|autograph)\b/.test(lower)) tags.push("Auto");
   if (/\b(patch|relic|jersey)\b/.test(lower)) tags.push("Patch");
   if (/#\d+|\bnumbered\b|\b\/\d+\b/.test(lower)) tags.push("Numbered");
@@ -1009,6 +1282,67 @@ function duplicateWarning(
     drafts.filter((item) => cardIdentity(item) === key).length > 1;
 
   return savedDuplicate || draftDuplicate;
+}
+
+function draftCompleteness(draft: CardDraft) {
+  const required = [draft.player, draft.sport, draft.year, draft.brand, draft.set];
+  const filled = required.filter((value) => value.trim()).length;
+
+  if (filled >= required.length && draft.imageUrl) {
+    return {
+      className: "border-emerald-300/20 bg-emerald-300/10 text-emerald-100",
+      label: "Ready to save",
+    };
+  }
+
+  if (filled >= 3 && draft.imageUrl) {
+    return {
+      className: "border-amber-300/20 bg-amber-300/10 text-amber-100",
+      label: "Review fields",
+    };
+  }
+
+  return {
+    className: "border-red-300/20 bg-red-300/10 text-red-100",
+    label: "Needs details",
+  };
+}
+
+function importConfidence(draft: {
+  brand?: string;
+  imageUrl?: string;
+  player?: string;
+  set?: string;
+  sport?: string;
+  team?: string;
+  year?: string;
+}) {
+  const weights = [
+    [draft.imageUrl, 15],
+    [draft.player, 25],
+    [draft.sport, 15],
+    [draft.year, 15],
+    [draft.brand, 15],
+    [draft.set, 10],
+    [draft.team, 5],
+  ] as const;
+
+  return weights.reduce(
+    (total, [value, weight]) => total + (value?.trim() ? weight : 0),
+    0,
+  );
+}
+
+function missingDraftFields(draft: CardDraft) {
+  return [
+    ["player", draft.player],
+    ["sport", draft.sport],
+    ["year", draft.year],
+    ["brand", draft.brand],
+    ["set", draft.set],
+  ]
+    .filter(([, value]) => !value.trim())
+    .map(([label]) => label);
 }
 
 function cardIdentity(card: {
@@ -1095,6 +1429,16 @@ function playerFromTitle(title: string) {
 }
 
 function sportFromTitle(title: string) {
+  const lower = title.toLowerCase();
+
+  if (/(nba|basketball|lakers|celtics|raptors|warriors|bulls|knicks)/.test(lower)) return "Basketball";
+  if (/(mlb|baseball|blue jays|yankees|dodgers|reds|braves|mets)/.test(lower)) return "Baseball";
+  if (/(nfl|football|steelers|cowboys|packers|chiefs|49ers)/.test(lower)) return "Football";
+  if (/(nhl|hockey|maple leafs|canadiens|bruins|oilers)/.test(lower)) return "Hockey";
+  if (/(soccer|football club|fc |fifa|uefa|premier league)/.test(lower)) return "Soccer";
+  if (/(pokemon|pokémon|charizard|pikachu|tcg)/.test(lower)) return "Pokemon";
+  if (/(magic the gathering|mtg|planeswalker)/.test(lower)) return "Magic";
+
   return sportFromFile(title);
 }
 
@@ -1132,7 +1476,7 @@ function setFromTitle(title: string) {
 }
 
 function gradeFromTitle(title: string) {
-  const grade = title.match(/\b(PSA|BGS|SGC)\s?(10|9\.5|9|8\.5|8)\b/i);
+  const grade = title.match(/\b(PSA|BGS|SGC|CGC|CSG)\s?(10|9\.5|9|8\.5|8)\b/i);
   if (!grade) return "Raw";
 
   return `${grade[1].toUpperCase()} ${grade[2]}`;
@@ -1147,7 +1491,7 @@ function titleCase(value: string) {
 }
 
 function yearFromFile(fileName: string) {
-  return fileName.match(/\b(19|20)\d{2}\b/)?.[0] ?? "";
+  return fileName.match(/\b(19|20)\d{2}(?:-\d{2})?\b/)?.[0] ?? "";
 }
 
 function sportFromFile(fileName: string) {
