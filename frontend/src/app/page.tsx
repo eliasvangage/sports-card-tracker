@@ -271,11 +271,6 @@ export default function Home() {
   const favoriteCards = allCards
     .filter((card) => card.tags?.includes("Favorite") && card.id !== grailCard?.id)
     .slice(0, 5);
-  const activeCollectionCards =
-    collection === "All"
-      ? allCards
-      : allCards.filter((card) => card.collection === collection);
-
   function deleteCard(id: string) {
     const nextCards = savedCards.filter((card) => card.id !== id);
     setSavedCards(nextCards);
@@ -504,21 +499,21 @@ export default function Home() {
       {activeSection === "Collection" ? (
         <>
       <section className="mx-auto max-w-[1440px] px-4 py-4 sm:px-6">
-        <div className="relative overflow-hidden rounded-xl border border-white/10 bg-[radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.08),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.055),rgba(255,255,255,0.015))] p-4 shadow-2xl sm:p-5">
+        <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.08),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.055),rgba(255,255,255,0.015))] p-4 shadow-2xl sm:p-5">
           <div
             className="absolute inset-x-0 top-0 h-1"
             style={{ backgroundColor: activeTheme.accent }}
           />
-          <div className="relative grid gap-5 lg:grid-cols-[1fr_300px] lg:items-stretch">
+          <div className="relative grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-white/55">
-                CardRoster vault
+                Collection
               </p>
-              <h2 className="mt-2 max-w-3xl text-3xl font-black leading-tight tracking-normal">
-                Browse your roster like a collector gallery.
+              <h2 className="mt-2 max-w-3xl text-3xl font-black leading-tight tracking-normal sm:text-4xl">
+                {collectionName}
               </h2>
               <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-slate-400">
-                Feature grails, sort vaults, manage trades, and keep the collection ready to share.
+                Browse, tune, value, and share cards from one focused vault view.
               </p>
               <div className="mt-5 flex flex-wrap gap-2">
                 <Link
@@ -566,10 +561,10 @@ export default function Home() {
             <div className="rounded-xl border border-white/10 bg-black/30 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-                  Public profile
+                  Vault settings
                 </p>
                 <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
-                  Preview
+                  Local
                 </span>
               </div>
               <label className="mt-4 block text-xs font-bold text-slate-200">
@@ -605,9 +600,9 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-[1440px] gap-4 px-4 pb-8 sm:px-6 lg:grid-cols-[250px_minmax(0,1fr)_300px]">
+      <section className="mx-auto grid max-w-[1440px] gap-4 px-4 pb-8 sm:px-6 xl:grid-cols-[230px_minmax(0,1fr)_320px]">
         <aside className={`h-fit rounded-xl border border-white/10 ${activeTheme.panel} p-3 shadow-xl lg:sticky lg:top-20`}>
-          <RailSection title="Browse">
+          <RailSection title="Find">
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -616,7 +611,7 @@ export default function Home() {
             />
           </RailSection>
 
-          <RailSection title="Quick filters">
+          <RailSection title="Filter">
             <div className="grid gap-2">
               <FilterSelect label="Collection" value={collection} onChange={setCollection} options={collections} />
               <FilterSelect label="Sport" value={sport} onChange={setSport} options={sports} />
@@ -630,44 +625,48 @@ export default function Home() {
             </div>
           </RailSection>
 
-          <RailSection title="Add collection">
-            <div className="grid gap-2">
-              <input
-                value={newCollection}
-                onChange={(event) => setNewCollection(event.target.value)}
-                className="h-9 rounded-md border border-white/10 bg-black/30 px-3 text-xs font-bold text-white outline-none placeholder:text-slate-500 focus:border-white/40"
-                placeholder="New collection"
-              />
-              <button
-                onClick={addCollection}
-                className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10"
-              >
-                Add collection
-              </button>
-            </div>
-          </RailSection>
-
-          <RailSection title="Chase card">
-            <div className="grid gap-2">
-              <input
-                value={newChasePlayer}
-                onChange={(event) => setNewChasePlayer(event.target.value)}
-                className="h-9 rounded-md border border-white/10 bg-black/30 px-3 text-xs font-bold text-white outline-none placeholder:text-slate-500 focus:border-white/40"
-                placeholder="Player or card to chase"
-              />
-              <button
-                onClick={addChaseCard}
-                className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10"
-              >
-                Add to wishlist
-              </button>
-            </div>
-          </RailSection>
-
-          <RailSection title="Defaults">
+          <RailSection title="Add">
             <details className="group rounded-lg border border-white/10 bg-black/15 p-2">
               <summary className="cursor-pointer list-none text-sm font-black text-sky-100 group-open:text-white">
-                Theme and card finish
+                Vault tools
+              </summary>
+              <div className="mt-3 grid gap-3">
+                <div className="grid gap-2">
+                  <input
+                    value={newCollection}
+                    onChange={(event) => setNewCollection(event.target.value)}
+                    className="h-9 rounded-md border border-white/10 bg-black/30 px-3 text-xs font-bold text-white outline-none placeholder:text-slate-500 focus:border-white/40"
+                    placeholder="New collection"
+                  />
+                  <button
+                    onClick={addCollection}
+                    className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10"
+                  >
+                    Add collection
+                  </button>
+                </div>
+                <div className="grid gap-2 border-t border-white/10 pt-3">
+                  <input
+                    value={newChasePlayer}
+                    onChange={(event) => setNewChasePlayer(event.target.value)}
+                    className="h-9 rounded-md border border-white/10 bg-black/30 px-3 text-xs font-bold text-white outline-none placeholder:text-slate-500 focus:border-white/40"
+                    placeholder="Card to chase"
+                  />
+                  <button
+                    onClick={addChaseCard}
+                    className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10"
+                  >
+                    Add wishlist
+                  </button>
+                </div>
+              </div>
+            </details>
+          </RailSection>
+
+          <RailSection title="Look">
+            <details className="group rounded-lg border border-white/10 bg-black/15 p-2">
+              <summary className="cursor-pointer list-none text-sm font-black text-sky-100 group-open:text-white">
+                Appearance
               </summary>
               <div className="mt-3 grid gap-2">
                 <FilterSelect
@@ -733,21 +732,12 @@ export default function Home() {
           ) : null}
 
           {allCards.length > 0 ? (
-            <CollectionExhibit
-              accent={activeTheme.accent}
-              cards={activeCollectionCards}
-              collection={collection}
-              collections={collections.filter((item) => item !== "All")}
-              onSelectCollection={setCollection}
-            />
-          ) : null}
-
-          {allCards.length > 0 ? (
-            <FeaturedShelf
-              accent={activeTheme.accent}
-              cards={favoriteCards}
-              onSelect={(card) => setSelectedId(card.id)}
-            />
+            <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <GalleryStat label="Shown" value={filteredCards.length.toString()} />
+              <GalleryStat label="Vault" value={collection === "All" ? "All" : collection} />
+              <GalleryStat label="Sort" value={sortMode} />
+              <GalleryStat label="View" value={displayMode} />
+            </div>
           ) : null}
 
           <div className="mb-3 flex flex-col justify-between gap-3 rounded-lg border border-white/10 bg-[#151b26]/70 p-3 sm:flex-row sm:items-center">
@@ -756,8 +746,11 @@ export default function Home() {
                 Gallery
               </p>
               <h3 className="mt-1 text-xl font-black">
-                {filteredCards.length} card{filteredCards.length === 1 ? "" : "s"}
+                {collection === "All" ? "Full roster" : collection}
               </h3>
+              <p className="mt-1 text-xs font-bold text-slate-500">
+                {filteredCards.length} card{filteredCards.length === 1 ? "" : "s"} shown
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <select
@@ -1731,16 +1724,9 @@ function InsightsHome({
         <DashboardPanel title="Recent activity">
           {(allCards.slice(0, 5)).map((card) => (
             <button key={card.id} onClick={() => onOpenCard(card)} className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-2 text-left hover:bg-white/[0.06]">
-              <div
-                className="h-12 w-9 rounded bg-cover bg-center"
-                style={{
-                  backgroundImage: card.imageUrl ? `url(${card.imageUrl})` : undefined,
-                  backgroundColor: card.imageUrl ? undefined : card.color,
-                  backgroundPosition: imagePosition(card),
-                  backgroundSize: `${card.imageZoom ?? 100}%`,
-                  transform: imageRotateTransform(card),
-                }}
-              />
+              <div className="relative h-12 w-9 overflow-hidden rounded border border-white/10 bg-black/25">
+                <EditedCardImage card={card} sizes="44px" accent={accent} />
+              </div>
               <div className="min-w-0">
                 <p className="truncate text-sm font-black text-white">{card.player}</p>
                 <p className="truncate text-xs text-slate-500">{card.status}</p>
@@ -2891,17 +2877,12 @@ function ShowcaseOverlay({
             <button
               key={card.id}
               onClick={() => setActiveIndex(index)}
-              className={`h-16 w-12 shrink-0 rounded border bg-cover bg-center ${
+              className={`relative h-16 w-12 shrink-0 overflow-hidden rounded border bg-black/25 ${
                 activeIndex === index ? "border-white" : "border-white/15 opacity-60"
               }`}
-              style={{
-                backgroundImage: card.imageUrl ? `url(${card.imageUrl})` : undefined,
-                backgroundColor: card.imageUrl ? undefined : card.color,
-                backgroundPosition: imagePosition(card),
-                backgroundSize: `${card.imageZoom ?? 100}%`,
-                transform: imageRotateTransform(card),
-              }}
-            />
+            >
+              <EditedCardImage card={card} sizes="48px" accent={accent} />
+            </button>
           ))}
         </div>
       </div>
@@ -2987,6 +2968,17 @@ function DashboardMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-white/10 bg-black/25 p-3">
       <p className="truncate text-2xl font-black text-white">{value}</p>
+      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function GalleryStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+      <p className="truncate text-sm font-black text-white">{value}</p>
       <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
         {label}
       </p>
@@ -3256,121 +3248,6 @@ function GrailDisplay({
   );
 }
 
-function CollectionExhibit({
-  accent,
-  cards,
-  collection,
-  collections,
-  onSelectCollection,
-}: {
-  accent: string;
-  cards: Card[];
-  collection: string;
-  collections: string[];
-  onSelectCollection: (collection: string) => void;
-}) {
-  return (
-    <div className="mb-4 overflow-hidden rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(255,255,255,0.055),rgba(255,255,255,0.012))] p-4">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-            Collection exhibit
-          </p>
-          <h3 className="mt-1 text-2xl font-black text-white">
-            {collection === "All" ? "Full roster" : collection}
-          </h3>
-          <p className="mt-1 text-sm font-bold text-slate-400">
-            {cards.length} card{cards.length === 1 ? "" : "s"} on display
-          </p>
-        </div>
-        <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
-          {["All", ...collections].map((item) => (
-            <button
-              key={item}
-              onClick={() => onSelectCollection(item)}
-              className={`h-9 shrink-0 rounded-full px-3 text-xs font-black transition ${
-                collection === item
-                  ? "text-white"
-                  : "border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
-              }`}
-              style={collection === item ? { backgroundColor: accent } : undefined}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FeaturedShelf({
-  accent,
-  cards,
-  onSelect,
-}: {
-  accent: string;
-  cards: Card[];
-  onSelect: (card: Card) => void;
-}) {
-  const emptySlots = Array.from({ length: Math.max(0, 5 - cards.length) });
-
-  return (
-    <div className="mb-4 rounded-xl border border-white/10 bg-[radial-gradient(circle_at_30%_0%,rgba(255,255,255,0.07),transparent_32%),rgba(0,0,0,0.18)] p-3">
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-            Featured cards
-          </p>
-          <p className="mt-1 text-sm font-black text-white">
-            Favorites collectors see first
-          </p>
-        </div>
-        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
-          {cards.length}/5 filled
-        </span>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
-        {cards.map((card) => (
-          <button
-            key={card.id}
-            onClick={() => onSelect(card)}
-            className="group rounded-lg border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.014))] p-2 text-left transition hover:-translate-y-0.5 hover:border-white/25"
-          >
-            <div className="mx-auto w-24 rounded-lg border border-white/10 bg-black/20 p-1.5">
-              <CleanCardThumb accent={accent} card={card} />
-            </div>
-            <p className="mt-2 truncate text-xs font-black leading-5 text-white">
-              {card.player}
-            </p>
-            <p className="truncate text-[11px] font-bold text-slate-500">
-              {card.year} {card.brand}
-            </p>
-            <div
-              className="mt-2 h-1 rounded-full"
-              style={{ backgroundColor: card.color || accent }}
-            />
-          </button>
-        ))}
-        {emptySlots.map((_, index) => (
-          <div
-            key={`empty-${index}`}
-            className="flex min-h-32 flex-col items-center justify-center rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-3 text-center"
-          >
-            <div
-              className="h-10 w-10 rounded-full border border-white/10 bg-white/5"
-              style={{ boxShadow: `0 0 28px ${accent}24` }}
-            />
-            <p className="mt-3 text-xs font-black text-slate-400">
-              Add favorite
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function EmptyGallery({
   accent,
   borderStyle,
@@ -3541,19 +3418,9 @@ function CardTile({
         } ${borderClass(borderStyle)}`}
       >
         <div className="flex items-center gap-3">
-          <div
-            className="h-11 w-8 rounded border border-white/20 bg-cover bg-center"
-            style={
-              card.imageUrl
-                ? {
-                    backgroundImage: `url(${card.imageUrl})`,
-                    backgroundPosition: imagePosition(card),
-                    backgroundSize: `${card.imageZoom ?? 100}%`,
-                    transform: `rotate(${card.imageRotation ?? 0}deg)`,
-                  }
-                : { backgroundColor: card.color }
-            }
-          />
+          <div className="relative h-11 w-8 overflow-hidden rounded border border-white/20 bg-black/25">
+            <EditedCardImage card={card} sizes="36px" accent={accent} />
+          </div>
           <div>
             <p className="text-sm font-black text-white">{card.player}</p>
             <p className="text-xs text-slate-400">
@@ -3653,21 +3520,11 @@ function CardPreview({
           >
             {card.imageUrl ? (
               <div className="relative h-full w-full bg-transparent">
-                <Image
-                  src={card.imageUrl}
-                  alt={cardTitle || "Card image"}
-                  fill
-                  unoptimized
+                <EditedCardImage
+                  card={card}
                   sizes={large ? "280px" : "220px"}
-                  className={imageFit === "contain" ? "object-contain" : "object-cover"}
-                  style={{
-                    objectPosition: imagePosition(card),
-                    transform:
-                      imageFit === "contain"
-                        ? imageRotateTransform(card)
-                        : `${imageScaleTransform(card)} ${imageRotateTransform(card)}`,
-                    transformOrigin: imagePosition(card),
-                  }}
+                  fit={imageFit}
+                  accent={accent}
                 />
               </div>
             ) : (
@@ -3698,8 +3555,6 @@ function CardPreview({
 }
 
 function MiniWallPreview({ accent, card }: { accent: string; card: Card }) {
-  const cardTitle = [card.player, card.team].filter(Boolean).join(" | ");
-
   return (
     <div className="relative h-full w-full overflow-hidden rounded-lg border border-white/10 bg-black/30 p-1.5 shadow-[0_12px_24px_rgba(0,0,0,0.35)]">
       <div
@@ -3709,32 +3564,13 @@ function MiniWallPreview({ accent, card }: { accent: string; card: Card }) {
         }}
       />
       <div className="relative mx-auto h-[calc(100%-8px)] max-w-[62px] overflow-hidden rounded-md bg-[#0d111a]">
-        {card.imageUrl ? (
-          <Image
-            src={card.imageUrl}
-            alt={cardTitle || "Card image"}
-            fill
-            unoptimized
-            sizes="72px"
-            className="object-contain"
-            style={{ transform: imageRotateTransform(card) }}
-          />
-        ) : (
-          <div
-            className="grid h-full place-items-center text-[10px] font-black text-white"
-            style={{ backgroundColor: card.color || accent }}
-          >
-            CR
-          </div>
-        )}
+        <EditedCardImage card={card} sizes="72px" accent={accent} />
       </div>
     </div>
   );
 }
 
 function CleanCardThumb({ accent, card }: { accent: string; card: Card }) {
-  const cardTitle = [card.player, card.team].filter(Boolean).join(" | ");
-
   return (
     <div className="relative aspect-[5/7] w-full overflow-hidden rounded-lg bg-[#0d111a] shadow-[0_14px_30px_rgba(0,0,0,0.42)] ring-1 ring-white/15">
       <div
@@ -3743,25 +3579,49 @@ function CleanCardThumb({ accent, card }: { accent: string; card: Card }) {
           background: `linear-gradient(90deg, ${card.color || accent}, #20e3b2, #38bdf8, #ec4899)`,
         }}
       />
-      {card.imageUrl ? (
-        <Image
-          src={card.imageUrl}
-          alt={cardTitle || "Card image"}
-          fill
-          unoptimized
-          sizes="120px"
-          className="object-contain"
-          style={{ transform: imageRotateTransform(card) }}
-        />
-      ) : (
-        <div
-          className="grid h-full place-items-center p-3 text-center text-xs font-black text-white"
-          style={{ backgroundColor: card.color || accent }}
-        >
-          {card.player || "Card"}
-        </div>
-      )}
+      <EditedCardImage card={card} sizes="120px" accent={accent} />
     </div>
+  );
+}
+
+function EditedCardImage({
+  accent,
+  card,
+  fit = "contain",
+  sizes,
+}: {
+  accent: string;
+  card: Card;
+  fit?: "cover" | "contain";
+  sizes: string;
+}) {
+  const cardTitle = [card.player, card.team].filter(Boolean).join(" | ");
+
+  if (!card.imageUrl) {
+    return (
+      <div
+        className="grid h-full w-full place-items-center p-2 text-center text-[10px] font-black text-white"
+        style={{ backgroundColor: card.color || accent }}
+      >
+        {card.player || "CR"}
+      </div>
+    );
+  }
+
+  return (
+    <Image
+      src={card.imageUrl}
+      alt={cardTitle || "Card image"}
+      fill
+      unoptimized
+      sizes={sizes}
+      className={fit === "contain" ? "object-contain" : "object-cover"}
+      style={{
+        objectPosition: imagePosition(card),
+        transform: `${imageScaleTransform(card)} ${imageRotateTransform(card)}`,
+        transformOrigin: imagePosition(card),
+      }}
+    />
   );
 }
 
