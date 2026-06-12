@@ -25,6 +25,7 @@ type SoldCompsResponse = {
   highPrice: number;
   samples: number;
   comps: SoldComp[];
+  dataSource?: "sold" | "active";
   query: string;
 };
 
@@ -109,10 +110,12 @@ export function SoldComps({
             eBay comps
           </p>
           <h4 className="mt-1 text-lg font-black text-white">
-            Market estimate
+            {data?.dataSource === "sold" ? "Sold comps" : "Market estimate"}
           </h4>
           <p className="mt-1 text-xs font-bold text-slate-500">
-            Current listing signal until sold-history access is connected.
+            {data?.dataSource === "sold"
+              ? "Completed eBay sales with outliers trimmed."
+              : "Active listing signal while sold data is unavailable."}
           </p>
         </div>
         {data?.query ? (
@@ -148,7 +151,7 @@ export function SoldComps({
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 p-2.5">
             <p className="text-xs font-bold text-slate-400">
-              {data.samples} recent eBay listings
+              {data.samples} {data.dataSource === "sold" ? "sold eBay comps" : "recent eBay listings"}
             </p>
             <button
               type="button"

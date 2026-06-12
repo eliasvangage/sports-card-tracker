@@ -8,6 +8,12 @@ import { sportFromText, teamFromText } from "@/lib/card-taxonomy";
 
 type CardStatus = "Vaulted" | "Wishlist" | "For Trade";
 type CardTag = "Rookie" | "Auto" | "Patch" | "Numbered" | "Favorite";
+type FieldSource = "ebay_aspects" | "title_parser" | "ocr" | "manual";
+type FieldConfidence = {
+  confidence: number;
+  source: FieldSource;
+  value: string;
+};
 
 type CardDraft = {
   id: string;
@@ -20,6 +26,7 @@ type CardDraft = {
   sourceListingType?: string;
   sourceMarketplace?: string;
   sourceConfidence?: number;
+  fieldConfidence?: Record<string, FieldConfidence>;
   player: string;
   sport: string;
   team: string;
@@ -81,13 +88,13 @@ export default function UploadPage() {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("cardroster.showMoney") !== "false";
   });
-  const [batchSport, setBatchSport] = useState("Basketball");
-  const [batchBrand, setBatchBrand] = useState("Topps");
-  const [batchCollection, setBatchCollection] = useState("Main Collection");
-  const [batchGrade, setBatchGrade] = useState("Raw");
-  const [batchFrame, setBatchFrame] =
+  const [batchSport] = useState("Basketball");
+  const [batchBrand] = useState("Topps");
+  const [batchCollection] = useState("Main Collection");
+  const [batchGrade] = useState("Raw");
+  const [batchFrame] =
     useState<(typeof frameStyles)[number]>("Card");
-  const [batchBorder, setBatchBorder] = useState<"Soft" | "Chrome" | "Glow">(
+  const [batchBorder] = useState<"Soft" | "Chrome" | "Glow">(
     "Soft",
   );
   const [collections, setCollections] = useState<string[]>(() => {
@@ -109,7 +116,6 @@ export default function UploadPage() {
     if (typeof window === "undefined") return [];
     return JSON.parse(localStorage.getItem("cardroster.cards") ?? "[]");
   });
-  const [newCollection, setNewCollection] = useState("");
   const playerSuggestions = uniqueValues(savedCards.map((card) => card.player));
   const teamSuggestions = uniqueValues(savedCards.map((card) => card.team));
   const setSuggestions = uniqueValues(savedCards.map((card) => card.set));
@@ -159,6 +165,7 @@ export default function UploadPage() {
 
   function addScannedDraft(result: CardScanResult) {
     const field = (name: string) => result.fields[name]?.value?.trim() ?? "";
+    const fieldConfidence = fieldConfidenceFromScan(result);
     const scannedBrand = field("brand");
     const brand = brands.includes(scannedBrand) ? scannedBrand : batchBrand;
     const nextDraft: CardDraft = {
@@ -166,15 +173,8 @@ export default function UploadPage() {
       fileName: "Card scan",
       imageUrl: result.imageUrl,
       sourceName: "Card scanner",
-      sourceConfidence: importConfidence({
-        brand,
-        imageUrl: result.imageUrl,
-        player: field("player"),
-        set: field("set"),
-        sport: field("sport"),
-        team: field("team"),
-        year: field("year"),
-      }),
+      sourceConfidence: confidenceAverage(fieldConfidence),
+      fieldConfidence,
       player: field("player"),
       sport: field("sport") || batchSport,
       team: field("team"),
@@ -237,15 +237,16 @@ export default function UploadPage() {
         sourcePriceLabel: listing.priceLabel ?? "",
         sourceListingType: listing.listingType ?? "eBay listing",
         sourceMarketplace: listing.marketplaceId ?? "",
-        sourceConfidence: importConfidence({
-          brand: listing.brand ?? "",
-          imageUrl: listing.imageUrl ?? "",
-          player: listing.player ?? "",
-          set: listing.set ?? "",
-          sport: listing.sport ?? "",
-          team: listing.team ?? "",
-          year: listing.year ?? "",
-        }),
+        sourceConfidence: listing.sourceConfidence ?? importConfidence({
+            brand: listing.brand ?? "",
+            imageUrl: listing.imageUrl ?? "",
+            player: listing.player ?? "",
+            set: listing.set ?? "",
+            sport: listing.sport ?? "",
+            team: listing.team ?? "",
+            year: listing.year ?? "",
+          }),
+        fieldConfidence: normalizeFieldConfidence(listing.fieldConfidence),
         player: listing.player || playerFromTitle(title),
         sport: listing.sport || sportFromTitle(title) || batchSport,
         team: listing.team || teamFromTitle(title),
@@ -255,7 +256,7 @@ export default function UploadPage() {
         cardNumber: listing.cardNumber ?? "",
         parallel: listing.parallel ?? "",
         status: "Vaulted",
-        grade: gradeFromTitle(title),
+        grade: listing.grade || gradeFromTitle(title),
         color: colors[drafts.length % colors.length],
         collection: batchCollection || collections[0] || "Main Collection",
         estimatedValue: showMoney ? (listing.price ?? "") : "",
@@ -288,23 +289,13 @@ export default function UploadPage() {
   ) {
     setDrafts((currentDrafts) =>
       currentDrafts.map((draft) =>
-        draft.id === id ? { ...draft, [field]: value } : draft,
+        draft.id === id ? applyDraftUpdate(draft, field, value) : draft,
       ),
     );
   }
 
   function removeDraft(id: string) {
     setDrafts((currentDrafts) => currentDrafts.filter((draft) => draft.id !== id));
-  }
-
-  function addCollection() {
-    const cleanName = newCollection.trim();
-    if (!cleanName || collections.includes(cleanName)) return;
-
-    const nextCollections = [...collections, cleanName];
-    setCollections(nextCollections);
-    localStorage.setItem("cardroster.collections", JSON.stringify(nextCollections));
-    setNewCollection("");
   }
 
   async function saveDrafts() {
@@ -518,106 +509,6 @@ export default function UploadPage() {
           <CardScanner onScanComplete={addScannedDraft} />
         </section>
 
-        <section className="mt-4 grid gap-4 lg:grid-cols-[1fr_320px]">
-          <div className="rounded-xl border border-white/10 bg-[#151b24] p-3 shadow-xl">
-            <details>
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                    Fast fill
-                  </p>
-                  <p className="mt-1 text-sm font-black text-white">
-                    Defaults for new uploads
-                  </p>
-                </div>
-                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
-                  Optional
-                </span>
-              </summary>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            <select
-              value={batchCollection}
-              onChange={(event) => setBatchCollection(event.target.value)}
-              className="field"
-            >
-              {collections.map((collection) => (
-                <option key={collection}>{collection}</option>
-              ))}
-            </select>
-            <select
-              value={batchSport}
-              onChange={(event) => setBatchSport(event.target.value)}
-              className="field"
-            >
-              {sports.map((sport) => (
-                <option key={sport}>{sport}</option>
-              ))}
-            </select>
-            <select
-              value={batchBrand}
-              onChange={(event) => setBatchBrand(event.target.value)}
-              className="field"
-            >
-              {brands.map((brand) => (
-                <option key={brand}>{brand}</option>
-              ))}
-            </select>
-            <select
-              value={batchGrade}
-              onChange={(event) => setBatchGrade(event.target.value)}
-              className="field"
-            >
-              {grades.map((grade) => (
-                <option key={grade}>{grade}</option>
-              ))}
-            </select>
-            <select
-              value={batchFrame}
-              onChange={(event) =>
-                setBatchFrame(event.target.value as (typeof frameStyles)[number])
-              }
-              className="field"
-            >
-              {frameStyles.map((frameStyle) => (
-                <option key={frameStyle}>{frameStyle}</option>
-              ))}
-            </select>
-            <select
-              value={batchBorder}
-              onChange={(event) =>
-                setBatchBorder(event.target.value as "Soft" | "Chrome" | "Glow")
-              }
-              className="field"
-            >
-              {borderStyles.map((borderStyle) => (
-                <option key={borderStyle}>{borderStyle}</option>
-              ))}
-            </select>
-              </div>
-            </details>
-          </div>
-
-          <div className="rounded-xl border border-white/10 bg-[#151b24] p-3 shadow-xl">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-              Collections
-            </p>
-            <div className="mt-3 grid gap-2">
-              <input
-                value={newCollection}
-                onChange={(event) => setNewCollection(event.target.value)}
-                className="field"
-                placeholder="New collection name"
-              />
-              <button
-                onClick={addCollection}
-                className="h-9 rounded-md border border-white/10 bg-white/5 px-4 text-xs font-bold text-slate-200 hover:bg-white/10"
-              >
-                Add collection
-              </button>
-            </div>
-          </div>
-        </section>
-
         <section className="mt-5">
           <datalist id="player-suggestions">
             {playerSuggestions.map((item) => (
@@ -750,7 +641,7 @@ export default function UploadPage() {
                             Card identity
                           </p>
                         </div>
-                      <Field label="Player">
+                      <Field confidence={draft.fieldConfidence?.player} label="Player">
                         <input
                           value={draft.player}
                           onChange={(event) =>
@@ -775,7 +666,7 @@ export default function UploadPage() {
                         </select>
                       </Field>
 
-                      <Field label="Team">
+                      <Field confidence={draft.fieldConfidence?.team} label="Team">
                         <input
                           value={draft.team}
                           onChange={(event) =>
@@ -787,7 +678,7 @@ export default function UploadPage() {
                         />
                       </Field>
 
-                      <Field label="Sport">
+                      <Field confidence={draft.fieldConfidence?.sport} label="Sport">
                         <select
                           value={draft.sport}
                           onChange={(event) =>
@@ -801,7 +692,7 @@ export default function UploadPage() {
                         </select>
                       </Field>
 
-                      <Field label="Year">
+                      <Field confidence={draft.fieldConfidence?.year} label="Year">
                         <input
                           value={draft.year}
                           onChange={(event) =>
@@ -812,7 +703,7 @@ export default function UploadPage() {
                         />
                       </Field>
 
-                      <Field label="Brand">
+                      <Field confidence={draft.fieldConfidence?.brand} label="Brand">
                         <select
                           value={draft.brand}
                           onChange={(event) =>
@@ -826,7 +717,7 @@ export default function UploadPage() {
                         </select>
                       </Field>
 
-                      <Field label="Set">
+                      <Field confidence={draft.fieldConfidence?.set} label="Set">
                         <input
                           value={draft.set}
                           onChange={(event) =>
@@ -838,7 +729,7 @@ export default function UploadPage() {
                         />
                       </Field>
 
-                      <Field label="Card #">
+                      <Field confidence={draft.fieldConfidence?.cardNumber} label="Card #">
                         <input
                           value={draft.cardNumber}
                           onChange={(event) =>
@@ -849,18 +740,7 @@ export default function UploadPage() {
                         />
                       </Field>
 
-                      <Field label="Parallel">
-                        <input
-                          value={draft.parallel}
-                          onChange={(event) =>
-                            updateDraft(draft.id, "parallel", event.target.value)
-                          }
-                          placeholder="Refractor, holo, gold..."
-                          className="field"
-                        />
-                      </Field>
-
-                      <Field label="Grade">
+                      <Field confidence={draft.fieldConfidence?.grade} label="Grade">
                         <select
                           value={draft.grade}
                           onChange={(event) =>
@@ -1128,18 +1008,45 @@ function UploadCardPreview({ draft }: { draft: CardDraft }) {
 
 function Field({
   children,
+  confidence,
   label,
 }: {
   children: React.ReactNode;
+  confidence?: FieldConfidence;
   label: string;
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-        {label}
+      <span className="mb-1 flex min-h-5 items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+        <span>{label}</span>
+        {confidence ? <ConfidenceBadge confidence={confidence} /> : null}
       </span>
       {children}
     </label>
+  );
+}
+
+function ConfidenceBadge({ confidence }: { confidence: FieldConfidence }) {
+  const label =
+    confidence.confidence >= 0.85
+      ? "Confident"
+      : confidence.confidence >= 0.5
+        ? "Review"
+        : "Fill";
+  const className =
+    confidence.confidence >= 0.85
+      ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-200"
+      : confidence.confidence >= 0.5
+        ? "border-amber-300/20 bg-amber-300/10 text-amber-100"
+        : "border-red-300/20 bg-red-300/10 text-red-100";
+
+  return (
+    <span
+      className={`rounded-full border px-2 py-0.5 text-[9px] font-black normal-case tracking-normal ${className}`}
+      title={`${Math.round(confidence.confidence * 100)}% from ${confidence.source.replace("_", " ")}`}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -1165,6 +1072,7 @@ function ImportIntelligencePanel({
   const [isScanning, setIsScanning] = useState(false);
   const score = draft.sourceConfidence ?? importConfidence(draft);
   const missing = missingDraftFields(draft);
+  const reviewFields = fieldsNeedingReview(draft);
   const scoreColor =
     score >= 85
       ? "text-emerald-200"
@@ -1196,7 +1104,11 @@ function ImportIntelligencePanel({
           ) : null}
         </div>
       </div>
-      {missing.length ? (
+      {reviewFields.length ? (
+        <p className="mt-2 text-xs font-bold leading-5 text-slate-400">
+          Review {reviewFields.join(", ")}. Low confidence stays editable before save.
+        </p>
+      ) : missing.length ? (
         <p className="mt-2 text-xs font-bold leading-5 text-slate-400">
           Check {missing.join(", ")} before saving.
         </p>
@@ -1360,7 +1272,9 @@ function tagGuesses(value: string) {
   if (/\b(rookie| rc |rc)\b/.test(lower)) tags.push("Rookie");
   if (/\b(auto|autograph)\b/.test(lower)) tags.push("Auto");
   if (/\b(patch|relic|jersey)\b/.test(lower)) tags.push("Patch");
-  if (/#\d+|\bnumbered\b|\b\/\d+\b/.test(lower)) tags.push("Numbered");
+  if (/(?:^|\s)\/\d{2,4}\b|\b(serial numbered|numbered|print run)\b/.test(lower)) {
+    tags.push("Numbered");
+  }
 
   return tags;
 }
@@ -1448,6 +1362,112 @@ function importConfidence(draft: {
     (total, [value, weight]) => total + (value?.trim() ? weight : 0),
     0,
   );
+}
+
+function applyDraftUpdate(
+  draft: CardDraft,
+  field: keyof CardDraft,
+  value: CardDraft[keyof CardDraft],
+): CardDraft {
+  const nextDraft = { ...draft, [field]: value };
+
+  if (typeof value !== "string" || !confidenceFieldNames.includes(field as string)) {
+    return nextDraft;
+  }
+
+  return {
+    ...nextDraft,
+    fieldConfidence: {
+      ...draft.fieldConfidence,
+      [field]: {
+        confidence: value.trim() ? 1 : 0,
+        source: "manual",
+        value,
+      },
+    },
+  };
+}
+
+const confidenceFieldNames = [
+  "brand",
+  "cardNumber",
+  "grade",
+  "parallel",
+  "player",
+  "set",
+  "sport",
+  "team",
+  "year",
+];
+
+function fieldConfidenceFromScan(result: CardScanResult) {
+  return Object.fromEntries(
+    Object.entries(result.fields).map(([key, field]) => [
+      key,
+      {
+        confidence: field.confidence,
+        source: "ocr" as const,
+        value: field.value,
+      },
+    ]),
+  );
+}
+
+function normalizeFieldConfidence(value: unknown) {
+  if (!value || typeof value !== "object") return undefined;
+
+  const entries: Array<[string, FieldConfidence]> = [];
+
+  Object.entries(value as Record<string, Partial<FieldConfidence>>)
+    .forEach(([key, field]) => {
+      const confidence = Number(field.confidence);
+      const fieldValue = typeof field.value === "string" ? field.value : "";
+      const source =
+        field.source === "ebay_aspects" || field.source === "title_parser"
+          ? field.source
+          : "title_parser";
+
+      if (!Number.isFinite(confidence)) return;
+
+      entries.push([
+        key,
+        {
+          confidence: Math.max(0, Math.min(1, confidence)),
+          source,
+          value: fieldValue,
+        },
+      ]);
+    });
+
+  return Object.fromEntries(entries);
+}
+
+function confidenceAverage(fields: Record<string, FieldConfidence>) {
+  const coreFields = ["player", "sport", "year", "brand", "set", "team"];
+  const scores = coreFields.map((field) => fields[field]?.confidence ?? 0);
+  const average = scores.reduce((total, score) => total + score, 0) / scores.length;
+
+  return Math.round(average * 100);
+}
+
+function fieldsNeedingReview(draft: CardDraft) {
+  const fieldLabels: Array<[string, string]> = [
+    ["player", "player"],
+    ["team", "team"],
+    ["sport", "sport"],
+    ["year", "year"],
+    ["brand", "brand"],
+    ["set", "set"],
+    ["cardNumber", "card #"],
+    ["grade", "grade"],
+  ];
+
+  return fieldLabels
+    .filter(([field]) => {
+      const confidence = draft.fieldConfidence?.[field];
+      return confidence ? confidence.confidence < 0.75 : false;
+    })
+    .map(([, label]) => label);
 }
 
 function missingDraftFields(draft: CardDraft) {

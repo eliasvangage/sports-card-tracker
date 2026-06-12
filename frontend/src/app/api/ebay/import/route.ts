@@ -31,6 +31,30 @@ type EbayItem = {
   localizedAspects?: EbayAspect[];
 };
 
+type ParsedTitle = {
+  brand: string;
+  cardNumber: string;
+  certNumber: string;
+  grade: string;
+  gradingCompany: string;
+  parallel: string;
+  player: string;
+  set: string;
+  sport: string;
+  team: string;
+  year: string;
+};
+
+type AspectFields = ParsedTitle;
+
+type FieldSource = "ebay_aspects" | "title_parser";
+
+type FieldResult = {
+  confidence: number;
+  source: FieldSource;
+  value: string;
+};
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const listingUrl = searchParams.get("url") ?? "";
@@ -103,6 +127,9 @@ export async function GET(request: Request) {
       : "eBay listing";
   const priceValue = item.price?.value ?? item.currentBidPrice?.value ?? "";
   const priceLabel = item.currentBidPrice?.value ? "Current bid" : item.price?.value ? "Listing price" : "";
+  const parsed = parseTitle(title);
+  const aspectFields = extractFromAspects(aspects, title);
+  const fieldConfidence = scoreFields(aspectFields, parsed);
 
   return NextResponse.json({
     title,
@@ -110,14 +137,19 @@ export async function GET(request: Request) {
     itemWebUrl: item.itemWebUrl ?? listingUrl,
     price: priceValue ? `$${priceValue}` : "",
     priceLabel,
-    brand: firstAspect(aspects, ["Brand"]) || brandFromTitle(title),
-    cardNumber: firstAspect(aspects, ["Card Number", "Card #", "Card No."]) || cardNumberFromTitle(title),
-    parallel: firstAspect(aspects, ["Parallel/Variety", "Parallel", "Variety"]) || parallelFromTitle(title),
-    player: firstAspect(aspects, ["Player/Athlete", "Player", "Athlete"]) || playerFromTitle(title),
-    set: firstAspect(aspects, ["Set"]) || setFromTitle(title),
-    sport: firstAspect(aspects, ["Sport"]) || sportFromTitle(title),
-    team: firstAspect(aspects, ["Team"]) || teamFromTitle(title),
-    year: firstAspect(aspects, ["Season", "Year Manufactured", "Year"]) || yearFromTitle(title),
+    brand: fieldConfidence.brand.value,
+    cardNumber: fieldConfidence.cardNumber.value,
+    certNumber: fieldConfidence.certNumber.value,
+    fieldConfidence,
+    grade: fieldConfidence.grade.value,
+    gradingCompany: fieldConfidence.gradingCompany.value,
+    parallel: fieldConfidence.parallel.value,
+    player: fieldConfidence.player.value,
+    set: fieldConfidence.set.value,
+    sourceConfidence: aggregateConfidence(fieldConfidence),
+    sport: fieldConfidence.sport.value,
+    team: fieldConfidence.team.value,
+    year: fieldConfidence.year.value,
     buyingOptions,
     condition: item.condition ?? "",
     itemEndDate: item.itemEndDate ?? "",
@@ -125,6 +157,102 @@ export async function GET(request: Request) {
     marketplaceId,
     aspects,
   });
+}
+
+function extractFromAspects(aspects: Record<string, string>, title: string): AspectFields {
+  const aspectTeam = firstAspect(aspects, ["Team"]);
+  const aspectSport = firstAspect(aspects, ["Sport"]);
+  const grader = firstAspect(aspects, ["Professional Grader", "Grader"]);
+  const grade = firstAspect(aspects, ["Grade"]);
+  const team = normalizeTeam(aspectTeam, title);
+
+  return {
+    brand: firstAspect(aspects, ["Manufacturer", "Brand"]),
+    cardNumber: firstAspect(aspects, ["Card Number", "Card #", "Card No."]),
+    certNumber: firstAspect(aspects, [
+      "Certification Number",
+      "Certification",
+      "PSA Cert",
+      "BGS Cert",
+    ]),
+    grade: grader && grade ? `${grader.toUpperCase()} ${grade}` : "",
+    gradingCompany: grader,
+    parallel: firstAspect(aspects, [
+      "Parallel/Variety",
+      "Parallel",
+      "Variety",
+      "Insert",
+    ]),
+    player: firstAspect(aspects, ["Player/Athlete", "Player", "Athlete"]),
+    set: firstAspect(aspects, ["Set", "Product"]),
+    sport: aspectSport || sportFromText(`${title} ${team} ${aspectTeam}`),
+    team,
+    year: firstAspect(aspects, ["Season", "Year Manufactured", "Year"]),
+  };
+}
+
+function scoreFields(aspects: AspectFields, parsed: ParsedTitle) {
+  const field = (
+    aspectValue: string,
+    parsedValue: string,
+    aspectConfidence: number,
+    parsedConfidence: number,
+  ): FieldResult => {
+    const cleanAspect = aspectValue.trim();
+    const cleanParsed = parsedValue.trim();
+
+    if (cleanAspect) {
+      return {
+        confidence: aspectConfidence,
+        source: "ebay_aspects",
+        value: cleanAspect,
+      };
+    }
+
+    if (cleanParsed) {
+      return {
+        confidence: parsedConfidence,
+        source: "title_parser",
+        value: cleanParsed,
+      };
+    }
+
+    return { confidence: 0, source: "title_parser", value: "" };
+  };
+
+  return {
+    brand: field(aspects.brand, parsed.brand, 0.97, 0.85),
+    cardNumber: field(aspects.cardNumber, parsed.cardNumber, 0.97, 0.8),
+    certNumber: field(aspects.certNumber, parsed.certNumber, 0.99, 0.75),
+    grade: field(aspects.grade, parsed.grade || "Raw", 0.98, parsed.grade ? 0.9 : 0.55),
+    gradingCompany: field(aspects.gradingCompany, parsed.gradingCompany, 0.98, 0.9),
+    parallel: field(aspects.parallel, parsed.parallel, 0.9, 0.72),
+    player: field(aspects.player, parsed.player, 0.95, 0.68),
+    set: field(aspects.set, parsed.set, 0.9, 0.62),
+    sport: field(aspects.sport, parsed.sport, 0.98, 0.7),
+    team: field(aspects.team, parsed.team, 0.9, 0.72),
+    year: field(aspects.year, parsed.year, 0.98, 0.95),
+  };
+}
+
+function aggregateConfidence(fields: Record<string, FieldResult>) {
+  const weights: Record<string, number> = {
+    brand: 12,
+    cardNumber: 6,
+    grade: 8,
+    player: 24,
+    set: 12,
+    sport: 12,
+    team: 8,
+    year: 18,
+  };
+  const totalWeight = Object.values(weights).reduce((total, weight) => total + weight, 0);
+  const score = Object.entries(weights).reduce((total, [key, weight]) => {
+    const confidence = fields[key]?.confidence ?? 0;
+    return total + confidence * weight;
+  }, 0);
+
+  return Math.round((score / totalWeight) * 100);
 }
 
 function firstAspect(aspects: Record<string, string>, keys: string[]) {
@@ -165,84 +293,126 @@ function marketplaceFromUrl(value: string) {
   return "EBAY_US";
 }
 
-function brandFromTitle(title: string) {
-  const brands = [
-    "Topps",
-    "Bowman",
-    "Panini",
-    "Upper Deck",
-    "Donruss",
-    "Prizm",
-    "Select",
-    "Mosaic",
-    "Optic",
-    "Fleer",
-    "Score",
-    "Leaf",
-    "Stadium Club",
-    "Heritage",
-    "Chrome",
-  ];
-
-  return brands.find((brand) => title.toLowerCase().includes(brand.toLowerCase())) ?? "";
-}
-
-function cardNumberFromTitle(title: string) {
-  return title.match(/(?:card\s*)?#\s?([A-Z0-9-]{1,12})\b/i)?.[1] ?? "";
-}
-
-function parallelFromTitle(title: string) {
-  const parallels = [
-    "Refractor",
-    "X-Fractor",
-    "Superfractor",
-    "Silver",
-    "Holo",
-    "Gold",
-    "Blue",
-    "Red",
-    "Green",
-    "Orange",
-    "Purple",
-    "Black",
-    "Mosaic",
-    "Prizm",
-    "Sepia",
-    "Negative",
-    "Atomic",
-  ];
-
-  return parallels.filter((parallel) => title.toLowerCase().includes(parallel.toLowerCase())).join(" ");
-}
-
-function playerFromTitle(title: string) {
-  const cleanTitle = title
-    .replace(/\b(19|20)\d{2}\b/g, "")
-    .replace(/\b(topps|panini|upper deck|bowman|fleer|donruss|select|mosaic|optic|score|leaf|heritage|chrome)\b/gi, "")
-    .replace(/\b(rookie|rc|auto|autograph|patch|relic|jersey|refractor|holo|silver|gold|card|graded|psa|bgs|sgc|csg|gem|mint)\b/gi, "")
-    .replace(/\b\d+(\.\d+)?\b/g, "")
-    .replace(/[#:/|()[\]-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return titleCase(cleanTitle.split(" ").slice(0, 3).join(" "));
-}
-
 function setFromTitle(title: string) {
   const sets = ["Chrome", "Prizm", "Optic", "Select", "Mosaic", "Heritage", "Stadium Club", "Finest"];
   return sets.filter((set) => title.toLowerCase().includes(set.toLowerCase())).join(" ");
 }
 
-function sportFromTitle(title: string) {
-  return sportFromText(title);
+function normalizeTeam(aspectTeam: string, title: string) {
+  const titleTeam = teamFromText(title);
+  if (titleTeam) return titleTeam;
+
+  if (!aspectTeam.includes(",")) return aspectTeam || teamFromText(aspectTeam);
+
+  return teamFromText(aspectTeam) || aspectTeam.split(",")[0]?.trim() || "";
 }
 
-function teamFromTitle(title: string) {
-  return teamFromText(title);
-}
+function parseTitle(title: string) {
+  const upper = title.toUpperCase();
+  const year = title.match(/\b(19[8-9]\d|20[0-2]\d)(?:-\d{2})?\b/)?.[0] ?? "";
+  const brandMap: Record<string, string[]> = {
+    "Bowman Chrome": ["BOWMAN CHROME", "B.CHROME"],
+    "National Treasures": ["NATIONAL TREASURES", " NT "],
+    "SP Authentic": ["SP AUTHENTIC", " SPA "],
+    "Stadium Club": ["STADIUM CLUB"],
+    "Upper Deck": ["UPPER DECK", "U.D.", " UD "],
+    Immaculate: ["IMMACULATE"],
+    Contenders: ["CONTENDERS"],
+    Bowman: ["BOWMAN"],
+    Chrome: ["CHROME"],
+    Donruss: ["DONRUSS"],
+    Fleer: ["FLEER"],
+    Leaf: ["LEAF"],
+    Mosaic: ["MOSAIC"],
+    Optic: ["OPTIC"],
+    Panini: ["PANINI"],
+    Prizm: ["PRIZM"],
+    Score: ["SCORE"],
+    Select: ["SELECT"],
+    SPx: ["SPX"],
+    Topps: ["TOPPS"],
+  };
+  const brand =
+    Object.entries(brandMap).find(([, keywords]) =>
+      keywords.some((keyword) => upper.includes(keyword)),
+    )?.[0] ?? "";
+  const parallelKeywords = [
+    "SUPERFRACTOR",
+    "GOLD REFRACTOR",
+    "RED REFRACTOR",
+    "BLUE REFRACTOR",
+    "ORANGE REFRACTOR",
+    "PURPLE REFRACTOR",
+    "REFRACTOR",
+    "SILVER",
+    "GOLD",
+    "BLUE",
+    "RED",
+    "ORANGE",
+    "GREEN",
+    "PURPLE",
+    "PINK",
+    "AQUA",
+    "HOLO",
+    "RAINBOW",
+    "CRACKED ICE",
+    "SHIMMER",
+    "WAVE",
+    "SCOPE",
+    "DISCO",
+    "CUBIC",
+    "CHOICE",
+    "HYPER",
+  ];
+  const printRun = title.match(/\/(\d{2,4})\b/)?.[0] ?? "";
+  const parallel = [
+    parallelKeywords.find((keyword) => upper.includes(keyword)) ?? "",
+    printRun,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const gradeMatch = title.match(/\b(PSA|BGS|SGC|CSG|HGA|CGC)\s*(\d+(?:\.\d)?)\b/i);
+  const grade = gradeMatch ? `${gradeMatch[1].toUpperCase()} ${gradeMatch[2]}` : "";
+  const gradingCompany = gradeMatch?.[1]?.toUpperCase() ?? "";
+  const certNumber = title.match(/\b(\d{8,10})\b/)?.[1] ?? "";
+  const cardNumber = title.match(/#\s*([A-Z]?\d+[A-Z]?)\b/i)?.[1] ?? "";
+  const set = setFromTitle(title);
+  const noise = [
+    year,
+    brand,
+    grade,
+    certNumber,
+    cardNumber ? `#${cardNumber}` : "",
+    "/\\d{2,4}",
+    "PSA|BGS|SGC|CSG|HGA|CGC",
+    "RC|SP|SSP|AUTO|AUTOGRAPH|PATCH|REFRACTOR|CHROME|PRIZM|GOLD|SILVER|BLUE|RED|ROOKIE|GEM|MINT|NM|HOT|INVEST|RARE|FREE SHIP",
+  ]
+    .filter(Boolean)
+    .join("|");
+  const player = titleCase(
+    title
+      .replace(new RegExp(noise, "gi"), " ")
+      .replace(/[^\w\s.'-]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(" ")
+      .slice(0, 3)
+      .join(" "),
+  );
 
-function yearFromTitle(title: string) {
-  return title.match(/\b(19|20)\d{2}(?:-\d{2})?\b/)?.[0] ?? "";
+  return {
+    brand,
+    cardNumber,
+    certNumber,
+    grade,
+    gradingCompany,
+    parallel,
+    player,
+    set,
+    sport: sportFromText(title),
+    team: teamFromText(title),
+    year,
+  };
 }
 
 function titleCase(value: string) {
