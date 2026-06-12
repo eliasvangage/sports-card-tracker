@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { SoldComps } from "@/components/SoldComps";
 
 type CardStatus = "Vaulted" | "Wishlist" | "For Trade";
 type CardTag = "Rookie" | "Auto" | "Patch" | "Numbered" | "Favorite";
@@ -947,6 +948,18 @@ export default function UploadPage() {
                               className="field"
                             />
                           </Field>
+                          <div className="sm:col-span-2">
+                            <SoldComps
+                              card={draft}
+                              onValueAccepted={(value) =>
+                                updateDraft(
+                                  draft.id,
+                                  "estimatedValue",
+                                  formatDraftMoney(value),
+                                )
+                              }
+                            />
+                          </div>
                         </>
                       ) : null}
                     </div>
@@ -1260,6 +1273,14 @@ function uniqueValues(values: Array<string | undefined>) {
   return Array.from(
     new Set(values.map((value) => value?.trim()).filter(Boolean) as string[]),
   ).slice(0, 80);
+}
+
+function formatDraftMoney(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    currency: "USD",
+    maximumFractionDigits: 0,
+    style: "currency",
+  }).format(value);
 }
 
 function duplicateWarning(
