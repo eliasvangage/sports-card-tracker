@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { CardScanner, type CardScanResult } from "@/components/CardScanner";
 import { SoldComps } from "@/components/SoldComps";
 
 type CardStatus = "Vaulted" | "Wishlist" | "For Trade";
@@ -152,6 +153,55 @@ export default function UploadPage() {
     );
 
     setDrafts((currentDrafts) => [...currentDrafts, ...nextDrafts]);
+    setSavedMessage("");
+  }
+
+  function addScannedDraft(result: CardScanResult) {
+    const field = (name: string) => result.fields[name]?.value?.trim() ?? "";
+    const scannedBrand = field("brand");
+    const brand = brands.includes(scannedBrand) ? scannedBrand : batchBrand;
+    const nextDraft: CardDraft = {
+      id: crypto.randomUUID(),
+      fileName: "Card scan",
+      imageUrl: result.imageUrl,
+      sourceName: "Card scanner",
+      sourceConfidence: importConfidence({
+        brand,
+        imageUrl: result.imageUrl,
+        player: field("player"),
+        set: field("set"),
+        sport: field("sport"),
+        team: field("team"),
+        year: field("year"),
+      }),
+      player: field("player"),
+      sport: field("sport") || batchSport,
+      team: field("team"),
+      year: field("year"),
+      brand,
+      set: field("set"),
+      cardNumber: field("cardNumber"),
+      parallel: field("parallel"),
+      status: "Vaulted",
+      grade: field("grade") || batchGrade,
+      color: colors[drafts.length % colors.length],
+      collection: batchCollection || collections[0] || "Main Collection",
+      estimatedValue: "",
+      purchasePrice: "",
+      salePrice: "",
+      saleStatus: "Holding",
+      frameStyle: batchFrame,
+      borderStyle: batchBorder,
+      tags: tagGuesses(
+        `${field("player")} ${field("set")} ${field("parallel")} ${field("grade")}`,
+      ),
+      imageX: 50,
+      imageY: 50,
+      imageZoom: 100,
+      imageRotation: 0,
+    };
+
+    setDrafts((currentDrafts) => [nextDraft, ...currentDrafts]);
     setSavedMessage("");
   }
 
@@ -343,62 +393,67 @@ export default function UploadPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#0f1218] px-4 py-5 text-white sm:px-6">
+    <main className="min-h-screen bg-[#0b0f16] px-4 py-5 text-white sm:px-6">
       <div className="mx-auto max-w-[1440px]">
-        <div className="sticky top-0 z-20 -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#0f1218]/90 px-4 py-3 backdrop-blur-xl sm:-mx-6 sm:px-6">
+        <div className="sticky top-0 z-20 -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#0b0f16]/90 px-4 py-3 backdrop-blur-xl sm:-mx-6 sm:px-6">
           <Link
             href="/"
-            className="inline-flex h-9 items-center rounded-md border border-white/10 bg-white/5 px-3 text-xs font-bold text-slate-200 hover:bg-white/10"
+            className="inline-flex h-9 items-center rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10"
           >
             Back to gallery
           </Link>
 
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-            Upload Studio
-          </p>
+          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] p-1">
+            {["Scan", "Import", "Review", "Save"].map((item, index) => (
+              <span
+                key={item}
+                className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${
+                  index === 0
+                    ? "bg-white text-[#111722]"
+                    : "text-slate-400"
+                }`}
+              >
+                {item}
+              </span>
+            ))}
+          </div>
         </div>
 
-        <section className="relative mt-5 overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.10),transparent_30%),radial-gradient(circle_at_82%_0%,rgba(56,189,248,0.12),transparent_28%),linear-gradient(135deg,rgba(21,27,38,0.96),rgba(10,14,20,0.96))] p-4 shadow-2xl">
-          <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#ff4d1c,#f8e71c,#20e3b2,#38bdf8,#ec4899)]" />
-          <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
+        <section className="relative mt-5 overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_18%_0%,rgba(255,85,51,0.13),transparent_30%),radial-gradient(circle_at_82%_0%,rgba(56,189,248,0.10),transparent_28%),linear-gradient(135deg,rgba(21,27,38,0.96),rgba(10,14,20,0.96))] p-4 shadow-2xl">
+          <div className="absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#ff5533,#f8e71c,#20e3b2,#38bdf8,#ec4899)]" />
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_460px]">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-[#ffb84d]">
-                CardRoster import
+                CardRoster intake
               </p>
-              <h1 className="mt-1 max-w-3xl text-3xl font-black leading-tight tracking-normal sm:text-4xl">
-                Drop, detect, crop, and save.
+              <h1 className="mt-2 max-w-3xl text-4xl font-black leading-tight tracking-normal sm:text-5xl">
+                Add cards without typing.
               </h1>
               <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-300">
-                Upload card photos or paste an active eBay listing to prefill the draft, then review every field before saving.
+                Scan a card, paste an eBay listing, or batch drop photos. Each
+                draft flows into one review queue with identity checks, crop,
+                and market signal before it touches your vault.
               </p>
               <div className="mt-5 grid max-w-2xl gap-2 sm:grid-cols-3">
                 <UploadStat label="Drafts" value={drafts.length.toString()} />
-                <UploadStat label="Autofill" value="On" />
-                <UploadStat label="Ready" value={drafts.length.toString()} />
+                <UploadStat label="Identification" value="OCR + eBay" />
+                <UploadStat label="Market" value="Comps ready" />
+              </div>
+              <div className="mt-5 grid max-w-3xl gap-2 md:grid-cols-3">
+                <ImportStep label="1" title="Scan" copy="Phone camera or image upload." />
+                <ImportStep label="2" title="Identify" copy="OCR, eBay aspects, parser." />
+                <ImportStep label="3" title="Review" copy="Confirm value and save." />
               </div>
             </div>
 
             <div className="grid gap-3">
-              <label className="flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-white/20 bg-black/25 px-5 py-8 text-center transition hover:-translate-y-0.5 hover:border-white/35 hover:bg-white/5">
-                <span className="grid size-12 place-items-center rounded-2xl border border-white/10 bg-white/5 text-lg font-black text-white">
-                  +
-                </span>
-                <span className="mt-3 text-base font-black">Drop card images</span>
-                <span className="mt-1 text-xs text-slate-400">
-                  Previewed in the same card frame used in your gallery
-                </span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(event) => handleFiles(event.target.files)}
-                />
-              </label>
-
-              <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+              <div className="rounded-xl border border-white/10 bg-black/25 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#ffb84d]">
                   eBay listing import
+                </p>
+                <p className="mt-1 text-xs font-bold leading-5 text-slate-400">
+                  Best for one-click image, title, aspects, listing price, and
+                  source tracking.
                 </p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
                   <input
@@ -410,7 +465,7 @@ export default function UploadPage() {
                   <button
                     onClick={importEbayListing}
                     disabled={!ebayUrl.trim() || isImporting}
-                    className="h-9 rounded-md bg-white px-4 text-xs font-black text-[#111722] transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+                    className="h-10 rounded-lg bg-[#ff5533] px-4 text-sm font-black text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
                   >
                     {isImporting ? "Importing" : "Import"}
                   </button>
@@ -421,18 +476,44 @@ export default function UploadPage() {
                   </p>
                 ) : null}
               </div>
+
+              <label className="flex min-h-28 cursor-pointer items-center gap-4 rounded-xl border border-dashed border-white/20 bg-black/25 px-4 py-4 text-left transition hover:-translate-y-0.5 hover:border-white/35 hover:bg-white/5">
+                <span className="grid size-12 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/5 text-lg font-black text-white">
+                  +
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-black text-white">
+                    Batch drop photos
+                  </span>
+                  <span className="mt-1 block text-xs font-bold leading-5 text-slate-400">
+                    Use when you want several drafts at once. Scanner is better
+                    for accurate one-card intake.
+                  </span>
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => handleFiles(event.target.files)}
+                />
+              </label>
             </div>
           </div>
 
           {savedMessage ? (
-            <div className="lg:col-span-2 rounded-lg border border-[#21c55d]/30 bg-[#21c55d]/10 p-3 text-sm font-bold text-[#86efac]">
+            <div className="mt-4 rounded-lg border border-[#21c55d]/30 bg-[#21c55d]/10 p-3 text-sm font-bold text-[#86efac]">
               {savedMessage}
             </div>
           ) : null}
         </section>
 
+        <section className="mt-4">
+          <CardScanner onScanComplete={addScannedDraft} />
+        </section>
+
         <section className="mt-4 grid gap-4 lg:grid-cols-[1fr_320px]">
-          <div className="rounded-xl border border-white/10 bg-[#151b26] p-3 shadow-xl">
+          <div className="rounded-xl border border-white/10 bg-[#151b24] p-3 shadow-xl">
             <details>
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
                 <div>
@@ -510,7 +591,7 @@ export default function UploadPage() {
             </details>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-[#151b26] p-3 shadow-xl">
+          <div className="rounded-xl border border-white/10 bg-[#151b24] p-3 shadow-xl">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
               Collections
             </p>
@@ -550,9 +631,9 @@ export default function UploadPage() {
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.2em] text-[#ffb84d]">
-                Step 2
+                Review queue
               </p>
-              <h2 className="text-xl font-black">Review drafts</h2>
+              <h2 className="text-2xl font-black">Confirm before save</h2>
             </div>
             <div className="flex items-center gap-3">
               <p className="text-xs font-bold text-slate-400">
@@ -561,7 +642,7 @@ export default function UploadPage() {
               <button
                 onClick={saveDrafts}
                 disabled={drafts.length === 0 || isSaving}
-                className="h-9 rounded-md bg-[#ff4d1c] px-4 text-xs font-black text-white transition hover:bg-[#ff6a3d] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+                className="h-10 rounded-lg bg-[#ff5533] px-4 text-sm font-black text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
               >
                 {isSaving ? "Saving" : "Save drafts"}
               </button>
@@ -569,18 +650,22 @@ export default function UploadPage() {
           </div>
 
           {drafts.length === 0 ? (
-            <div className="rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(21,27,38,0.9),rgba(10,14,20,0.95))] p-8 text-center text-sm text-slate-400">
-              Drop images or import an eBay listing to start.
+            <div className="rounded-2xl border border-dashed border-white/10 bg-[linear-gradient(135deg,rgba(21,27,38,0.72),rgba(10,14,20,0.92))] p-8 text-center shadow-xl">
+              <p className="text-lg font-black text-white">No drafts yet.</p>
+              <p className="mx-auto mt-2 max-w-xl text-sm font-bold leading-6 text-slate-400">
+                Scan a card, paste an eBay listing, or batch drop photos. Your
+                review queue will appear here with comps and confidence checks.
+              </p>
             </div>
           ) : (
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="grid gap-4">
               {drafts.map((draft) => (
                 <article
                   key={draft.id}
-                  className="grid gap-4 rounded-2xl border border-white/10 bg-[linear-gradient(145deg,rgba(21,27,38,0.98),rgba(11,15,22,0.98))] p-3 shadow-2xl sm:grid-cols-[190px_1fr]"
+                  className="grid gap-4 rounded-2xl border border-white/10 bg-[linear-gradient(145deg,rgba(21,27,38,0.98),rgba(11,15,22,0.98))] p-3 shadow-2xl lg:grid-cols-[240px_minmax(0,1fr)]"
                 >
                   <div>
-                    <div className="h-[280px] rounded-xl border border-white/10 bg-black/25 p-3 shadow-2xl">
+                    <div className="h-[330px] rounded-xl border border-white/10 bg-black/25 p-3 shadow-2xl">
                       <UploadCardPreview draft={draft} />
                     </div>
                     <div className="mt-2 rounded-md border border-white/10 bg-black/20 px-2 py-1.5">
@@ -611,13 +696,13 @@ export default function UploadPage() {
                     </div>
                   </div>
 
-                  <div>
+                  <div className="min-w-0">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
                           Review card
                         </p>
-                        <p className="mt-0.5 text-sm font-black text-white">
+                        <p className="mt-0.5 text-xl font-black text-white">
                           {draft.player || "Needs player"}
                         </p>
                         {duplicateWarning(draft, savedCards, drafts) ? (
@@ -652,7 +737,13 @@ export default function UploadPage() {
                       onMarkListed={() => updateDraft(draft.id, "saleStatus", "Listed")}
                       onMarkTrade={() => updateDraft(draft.id, "status", "For Trade")}
                     />
-                    <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+                      <div className="grid gap-2 rounded-xl border border-white/10 bg-black/15 p-3 sm:grid-cols-2">
+                        <div className="sm:col-span-2">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                            Card identity
+                          </p>
+                        </div>
                       <Field label="Player">
                         <input
                           value={draft.player}
@@ -843,8 +934,89 @@ export default function UploadPage() {
                           })}
                         </div>
                       </Field>
+                      </div>
 
-                      <div className="rounded-lg border border-white/10 bg-black/20 p-3 sm:col-span-2">
+                      <div className="grid h-fit gap-3">
+                        {showMoney ? (
+                          <SoldComps
+                            card={draft}
+                            onValueAccepted={(value) =>
+                              updateDraft(
+                                draft.id,
+                                "estimatedValue",
+                                formatDraftMoney(value),
+                              )
+                            }
+                          />
+                        ) : null}
+                        <div className="rounded-xl border border-white/10 bg-black/15 p-3">
+                          <p className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                            Value and status
+                          </p>
+                          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                            {showMoney ? (
+                              <>
+                                <Field label="Value">
+                                  <input
+                                    value={draft.estimatedValue}
+                                    onChange={(event) =>
+                                      updateDraft(
+                                        draft.id,
+                                        "estimatedValue",
+                                        event.target.value,
+                                      )
+                                    }
+                                    placeholder="Estimated value"
+                                    className="field"
+                                  />
+                                </Field>
+
+                                <Field label="Cost">
+                                  <input
+                                    value={draft.purchasePrice}
+                                    onChange={(event) =>
+                                      updateDraft(
+                                        draft.id,
+                                        "purchasePrice",
+                                        event.target.value,
+                                      )
+                                    }
+                                    placeholder="Purchase price"
+                                    className="field"
+                                  />
+                                </Field>
+
+                                <Field label="Sale">
+                                  <select
+                                    value={draft.saleStatus}
+                                    onChange={(event) =>
+                                      updateDraft(draft.id, "saleStatus", event.target.value)
+                                    }
+                                    className="field"
+                                  >
+                                    {saleStatuses.map((saleStatus) => (
+                                      <option key={saleStatus}>{saleStatus}</option>
+                                    ))}
+                                  </select>
+                                </Field>
+
+                                <Field label="Sold for">
+                                  <input
+                                    value={draft.salePrice}
+                                    onChange={(event) =>
+                                      updateDraft(draft.id, "salePrice", event.target.value)
+                                    }
+                                    placeholder="Sale price"
+                                    className="field"
+                                  />
+                                </Field>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-white/10 bg-black/15 p-3 xl:col-span-2">
                         <p className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
                           Crop position
                         </p>
@@ -891,77 +1063,6 @@ export default function UploadPage() {
                           </button>
                         </div>
                       </div>
-
-                      {showMoney ? (
-                        <>
-                          <Field label="Value">
-                            <input
-                              value={draft.estimatedValue}
-                              onChange={(event) =>
-                                updateDraft(
-                                  draft.id,
-                                  "estimatedValue",
-                                  event.target.value,
-                                )
-                              }
-                              placeholder="Estimated value"
-                              className="field"
-                            />
-                          </Field>
-
-                          <Field label="Cost">
-                            <input
-                              value={draft.purchasePrice}
-                              onChange={(event) =>
-                                updateDraft(
-                                  draft.id,
-                                  "purchasePrice",
-                                  event.target.value,
-                                )
-                              }
-                              placeholder="Purchase price"
-                              className="field"
-                            />
-                          </Field>
-
-                          <Field label="Sale">
-                            <select
-                              value={draft.saleStatus}
-                              onChange={(event) =>
-                                updateDraft(draft.id, "saleStatus", event.target.value)
-                              }
-                              className="field"
-                            >
-                              {saleStatuses.map((saleStatus) => (
-                                <option key={saleStatus}>{saleStatus}</option>
-                              ))}
-                            </select>
-                          </Field>
-
-                          <Field label="Sold for">
-                            <input
-                              value={draft.salePrice}
-                              onChange={(event) =>
-                                updateDraft(draft.id, "salePrice", event.target.value)
-                              }
-                              placeholder="Sale price"
-                              className="field"
-                            />
-                          </Field>
-                          <div className="sm:col-span-2">
-                            <SoldComps
-                              card={draft}
-                              onValueAccepted={(value) =>
-                                updateDraft(
-                                  draft.id,
-                                  "estimatedValue",
-                                  formatDraftMoney(value),
-                                )
-                              }
-                            />
-                          </div>
-                        </>
-                      ) : null}
                     </div>
                   </div>
                 </article>
@@ -1043,6 +1144,28 @@ function UploadStat({ label, value }: { label: string; value: string }) {
       <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
         {label}
       </p>
+    </div>
+  );
+}
+
+function ImportStep({
+  copy,
+  label,
+  title,
+}: {
+  copy: string;
+  label: string;
+  title: string;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+      <div className="flex items-center gap-2">
+        <span className="grid size-7 place-items-center rounded-lg bg-[#ff5533] text-[11px] font-black text-white">
+          {label}
+        </span>
+        <p className="text-sm font-black text-white">{title}</p>
+      </div>
+      <p className="mt-2 text-xs font-bold leading-5 text-slate-400">{copy}</p>
     </div>
   );
 }

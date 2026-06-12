@@ -102,7 +102,7 @@ export function SoldComps({
   }, [canFetch, queryString]);
 
   return (
-    <section className="rounded-xl border border-white/10 bg-[#151b24] p-3 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
+    <section className="rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(21,27,36,0.98),rgba(8,12,18,0.98))] p-3 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
@@ -111,6 +111,9 @@ export function SoldComps({
           <h4 className="mt-1 text-lg font-black text-white">
             Market estimate
           </h4>
+          <p className="mt-1 text-xs font-bold text-slate-500">
+            Current listing signal until sold-history access is connected.
+          </p>
         </div>
         {data?.query ? (
           <span className="max-w-full truncate rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-black text-slate-300">
@@ -132,7 +135,7 @@ export function SoldComps({
       ) : data && data.samples > 0 ? (
         <>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <div className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 p-3">
+            <div className="rounded-lg border border-emerald-300/20 bg-[radial-gradient(circle_at_20%_0%,rgba(110,231,183,0.18),transparent_42%),rgba(16,185,129,0.10)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
               <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">
                 Average
               </p>
@@ -143,7 +146,7 @@ export function SoldComps({
             <CompsMetric label="Low" value={formatMoney(data.lowPrice)} />
             <CompsMetric label="High" value={formatMoney(data.highPrice)} />
           </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 p-2.5">
             <p className="text-xs font-bold text-slate-400">
               {data.samples} recent eBay listings
             </p>
@@ -162,7 +165,7 @@ export function SoldComps({
                 href={comp.url}
                 target="_blank"
                 rel="noreferrer"
-                className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-lg border border-white/10 bg-black/20 p-2.5 hover:bg-white/[0.06]"
+                className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-lg border border-white/10 bg-black/20 p-2.5 transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.06]"
               >
                 <div className="min-w-0">
                   <p className="truncate text-xs font-black text-white">
