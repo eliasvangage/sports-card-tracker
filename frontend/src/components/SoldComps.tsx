@@ -135,6 +135,48 @@ export function SoldComps({
         <div className="mt-3 rounded-lg border border-red-300/20 bg-red-400/10 p-3 text-xs font-bold leading-5 text-red-100">
           {error}
         </div>
+      ) : compact && data && data.samples > 0 ? (
+        <div className="mt-3 grid gap-2">
+          <div className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 p-3">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">
+                  Average
+                </p>
+                <p className="mt-1 text-2xl font-black text-emerald-200">
+                  {formatMoney(data.avgPrice)}
+                </p>
+              </div>
+              <p className="text-right text-[10px] font-bold leading-4 text-slate-400">
+                {data.samples} samples<br />
+                {formatMoney(data.lowPrice)} to {formatMoney(data.highPrice)}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onValueAccepted(data.avgPrice)}
+              className="mt-3 h-8 w-full rounded-md bg-[#ff5533] px-3 text-[11px] font-black text-white hover:brightness-110"
+            >
+              Use estimate
+            </button>
+          </div>
+          {data.comps.slice(0, 2).map((comp) => (
+            <a
+              key={`${comp.url}-${comp.price}`}
+              href={comp.url}
+              target="_blank"
+              rel="noreferrer"
+              className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-lg border border-white/10 bg-black/20 p-2 text-left hover:bg-white/[0.06]"
+            >
+              <span className="truncate text-[11px] font-bold text-slate-300">
+                {comp.title}
+              </span>
+              <span className="text-xs font-black text-emerald-200">
+                {formatMoney(comp.price)}
+              </span>
+            </a>
+          ))}
+        </div>
       ) : data && data.samples > 0 ? (
         <>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">

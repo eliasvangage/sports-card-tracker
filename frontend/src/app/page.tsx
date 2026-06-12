@@ -11,7 +11,7 @@ type BorderStyle = "Soft" | "Chrome" | "Glow";
 type FrameStyle = "Card" | "Gradient" | "Sunset" | "Stand";
 type SortMode = "Newest" | "Player" | "Year";
 type CardTag = "Rookie" | "Auto" | "Patch" | "Numbered" | "Favorite";
-type StudioTab = "Info" | "Style" | "Crop" | "Value" | "Lookup";
+type StudioTab = "Details" | "Market" | "Display";
 type AppSection =
   | "Home"
   | "Feed"
@@ -70,7 +70,8 @@ type CollectorProfile = {
 };
 
 const cardTags: CardTag[] = ["Rookie", "Auto", "Patch", "Numbered", "Favorite"];
-const appSections: AppSection[] = ["Home", "Feed", "Collection", "Trade", "Tools", "Wishlist", "Profile"];
+const appSections: AppSection[] = ["Home", "Collection", "Feed", "Profile"];
+const utilitySections: AppSection[] = ["Insights", "Trade", "Tools", "Wishlist"];
 
 const themes: Record<ThemeName, { bg: string; panel: string; accent: string }> = {
   Arena: {
@@ -126,7 +127,7 @@ export default function Home() {
   const [collection, setCollection] = useState("All");
   const [tagFilter, setTagFilter] = useState<"All" | CardTag>("All");
   const [newCollection, setNewCollection] = useState("");
-  const [studioTab, setStudioTab] = useState<StudioTab>("Info");
+  const [studioTab, setStudioTab] = useState<StudioTab>("Details");
   const [detailId, setDetailId] = useState("");
   const [showcaseOpen, setShowcaseOpen] = useState(false);
   const [newChasePlayer, setNewChasePlayer] = useState("");
@@ -411,6 +412,25 @@ export default function Home() {
                 {section}
               </button>
             ))}
+            <select
+              aria-label="More sections"
+              value={utilitySections.includes(activeSection) ? activeSection : ""}
+              onChange={(event) => {
+                if (event.target.value) setActiveSection(event.target.value as AppSection);
+              }}
+              className={`h-7 rounded-full border border-white/10 px-3 text-xs font-bold outline-none ${
+                utilitySections.includes(activeSection)
+                  ? "bg-white text-[#111722]"
+                  : "bg-transparent text-slate-200 hover:bg-white/10"
+              }`}
+            >
+              <option value="">More</option>
+              {utilitySections.map((section) => (
+                <option key={section} value={section}>
+                  {section}
+                </option>
+              ))}
+            </select>
             <Link className="rounded-full px-3.5 py-1.5 hover:bg-white/10" href="/upload">
               Upload
             </Link>
@@ -832,9 +852,26 @@ export default function Home() {
                   large
                 />
               </div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <button onClick={() => setGrailId(selectedCard.id)} className="h-9 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                  Grail
+                </button>
+                <button onClick={() => setDetailId(selectedCard.id)} className="h-9 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                  View
+                </button>
+                {selectedCard.sourceUrl ? (
+                  <a href={selectedCard.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                    Source
+                  </a>
+                ) : (
+                  <button disabled className="h-9 rounded-md border border-white/10 bg-white/[0.03] text-xs font-black text-slate-600">
+                    Source
+                  </button>
+                )}
+              </div>
               <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
                 <div className="mb-3 grid grid-cols-3 gap-1 rounded-lg border border-white/10 bg-black/25 p-1">
-                  {(["Info", "Style", "Crop", "Value", "Lookup"] as StudioTab[]).map((tab) => (
+                  {(["Details", "Market", "Display"] as StudioTab[]).map((tab) => (
                     <button
                       key={tab}
                       onClick={() => setStudioTab(tab)}
@@ -848,7 +885,7 @@ export default function Home() {
                     </button>
                   ))}
                 </div>
-                {studioTab === "Info" ? (
+                {studioTab === "Details" ? (
                   <div className="grid gap-2">
                     <EditField label="Player">
                       <input value={selectedCard.player} onChange={(event) => updateCard(selectedCard.id, { player: event.target.value })} className="studio-field" />
@@ -889,12 +926,36 @@ export default function Home() {
                         <option>For Trade</option>
                       </select>
                     </EditField>
+                    <details className="rounded-lg border border-white/10 bg-black/20 p-3">
+                      <summary className="cursor-pointer list-none text-xs font-black text-slate-200">
+                        Storage and grading
+                      </summary>
+                      <div className="mt-3 grid gap-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <EditField label="Location">
+                            <input value={selectedCard.storageLocation ?? ""} onChange={(event) => updateCard(selectedCard.id, { storageLocation: event.target.value })} className="studio-field" placeholder="Box A" />
+                          </EditField>
+                          <EditField label="Cert #">
+                            <input value={selectedCard.certNumber ?? ""} onChange={(event) => updateCard(selectedCard.id, { certNumber: event.target.value })} className="studio-field" placeholder="Cert" />
+                          </EditField>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <EditField label="Grader">
+                            <input value={selectedCard.gradingCompany ?? ""} onChange={(event) => updateCard(selectedCard.id, { gradingCompany: event.target.value })} className="studio-field" placeholder="PSA" />
+                          </EditField>
+                          <EditField label="Fee">
+                            <input value={selectedCard.gradingFee ?? ""} onChange={(event) => updateCard(selectedCard.id, { gradingFee: event.target.value })} className="studio-field" placeholder="$25" />
+                          </EditField>
+                        </div>
+                        <CardResearchPanel card={selectedCard} />
+                      </div>
+                    </details>
                     <EditField label="Notes">
                       <textarea value={selectedCard.notes ?? ""} onChange={(event) => updateCard(selectedCard.id, { notes: event.target.value })} className="studio-field min-h-20 py-2" placeholder="Why this card matters, where it came from, condition notes..." />
                     </EditField>
                   </div>
                 ) : null}
-                {studioTab === "Style" ? (
+                {studioTab === "Display" ? (
                   <div className="grid gap-2">
                     <div className="grid grid-cols-2 gap-2">
                       <EditField label="Frame">
@@ -928,17 +989,17 @@ export default function Home() {
                         })}
                       </div>
                     </EditField>
-                  </div>
-                ) : null}
-                {studioTab === "Crop" ? (
-                  <div className="rounded-lg border border-white/10 bg-black/20 p-3">
-                    <div className="grid gap-3">
+                    <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                      <p className="mb-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                        Crop
+                      </p>
+                      <div className="grid gap-3">
                       <RangeField label="Horizontal" value={selectedCard.imageX ?? 50} onChange={(value) => updateCard(selectedCard.id, { imageX: value })} />
                       <RangeField label="Vertical" value={selectedCard.imageY ?? 50} onChange={(value) => updateCard(selectedCard.id, { imageY: value })} />
                       <RangeField label="Zoom" min={100} max={150} value={selectedCard.imageZoom ?? 100} onChange={(value) => updateCard(selectedCard.id, { imageZoom: value })} />
                       <RangeField label="Rotate" min={-180} max={180} value={selectedCard.imageRotation ?? 0} onChange={(value) => updateCard(selectedCard.id, { imageRotation: value })} />
-                    </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      </div>
+                      <div className="mt-3 grid grid-cols-3 gap-2">
                       <button type="button" onClick={() => updateCard(selectedCard.id, { imageRotation: rotateValue(selectedCard.imageRotation ?? 0, -90) })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
                         Left
                       </button>
@@ -948,10 +1009,11 @@ export default function Home() {
                       <button type="button" onClick={() => updateCard(selectedCard.id, { imageX: 50, imageY: 50, imageZoom: 100, imageRotation: 0 })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
                         Reset
                       </button>
+                      </div>
                     </div>
                   </div>
                 ) : null}
-                {studioTab === "Value" ? (
+                {studioTab === "Market" ? (
                   showMoney ? (
                     <div className="grid gap-2">
                       <div className="grid grid-cols-2 gap-2">
@@ -996,59 +1058,7 @@ export default function Home() {
                     </div>
                   )
                 ) : null}
-                {studioTab === "Lookup" ? (
-                  <div className="grid gap-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <EditField label="Location">
-                        <input value={selectedCard.storageLocation ?? ""} onChange={(event) => updateCard(selectedCard.id, { storageLocation: event.target.value })} className="studio-field" placeholder="Box A, binder 2..." />
-                      </EditField>
-                      <EditField label="Cert #">
-                        <input value={selectedCard.certNumber ?? ""} onChange={(event) => updateCard(selectedCard.id, { certNumber: event.target.value })} className="studio-field" placeholder="PSA/BGS/SGC" />
-                      </EditField>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <EditField label="Grading co.">
-                        <input value={selectedCard.gradingCompany ?? ""} onChange={(event) => updateCard(selectedCard.id, { gradingCompany: event.target.value })} className="studio-field" placeholder="PSA, BGS, SGC" />
-                      </EditField>
-                      <EditField label="Fee">
-                        <input value={selectedCard.gradingFee ?? ""} onChange={(event) => updateCard(selectedCard.id, { gradingFee: event.target.value })} className="studio-field" placeholder="$25" />
-                      </EditField>
-                    </div>
-                    <CardResearchPanel card={selectedCard} />
-                  </div>
-                ) : null}
-                <div className="mt-3 grid gap-2">
-                  <button onClick={() => setGrailId(selectedCard.id)} className="h-9 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
-                    Set as grail display
-                  </button>
-                  <button onClick={() => setDetailId(selectedCard.id)} className="h-9 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
-                    View card page
-                  </button>
-                  {selectedCard.sourceUrl ? (
-                    <a href={selectedCard.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
-                      Open source listing
-                    </a>
-                  ) : null}
-                </div>
               </div>
-              {showMoney ? (
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  <Detail
-                    label="Value"
-                    value={formatMoney(cardValue(selectedCard))}
-                  />
-                  <Detail
-                    label="Cost"
-                    value={formatMoney(moneyValue(selectedCard.purchasePrice))}
-                  />
-                  <Detail label="Sale" value={selectedCard.saleStatus ?? "Holding"} />
-                </div>
-              ) : (
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <Detail label="Status" value={selectedCard.status} />
-                  <Detail label="Grade" value={selectedCard.grade} />
-                </div>
-              )}
               <button
                 onClick={() => deleteCard(selectedCard.id)}
                 className="mt-4 h-10 w-full rounded-md border border-red-400/20 bg-red-500/10 text-sm font-bold text-red-200 hover:bg-red-500/20"
