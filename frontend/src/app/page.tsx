@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { SoldComps } from "@/components/SoldComps";
 
 type ThemeName = "Arena" | "Chrome" | "Hardwood";
 type DisplayMode = "Grid" | "Showcase" | "Compact";
@@ -986,6 +987,15 @@ export default function Home() {
                       <EditField label="Target price">
                         <input value={selectedCard.targetPrice ?? ""} onChange={(event) => updateCard(selectedCard.id, { targetPrice: event.target.value })} className="studio-field" placeholder="Wishlist target" />
                       </EditField>
+                      <SoldComps
+                        card={selectedCard}
+                        compact
+                        onValueAccepted={(value) =>
+                          updateCard(selectedCard.id, {
+                            estimatedValue: formatMoney(value),
+                          })
+                        }
+                      />
                     </div>
                   ) : (
                     <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm font-bold text-slate-400">
