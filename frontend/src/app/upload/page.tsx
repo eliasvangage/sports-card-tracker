@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { CardScanner, type CardScanResult } from "@/components/CardScanner";
 import { SoldComps } from "@/components/SoldComps";
+import { sportFromText, teamFromText } from "@/lib/card-taxonomy";
 
 type CardStatus = "Vaulted" | "Wishlist" | "For Trade";
 type CardTag = "Rookie" | "Auto" | "Patch" | "Numbered" | "Favorite";
@@ -421,7 +422,7 @@ export default function UploadPage() {
 
         <section className="relative mt-5 overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_18%_0%,rgba(255,85,51,0.13),transparent_30%),radial-gradient(circle_at_82%_0%,rgba(56,189,248,0.10),transparent_28%),linear-gradient(135deg,rgba(21,27,38,0.96),rgba(10,14,20,0.96))] p-4 shadow-2xl">
           <div className="absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#ff5533,#f8e71c,#20e3b2,#38bdf8,#ec4899)]" />
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_460px]">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_440px]">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-[#ffb84d]">
                 CardRoster intake
@@ -430,19 +431,24 @@ export default function UploadPage() {
                 Add cards without typing.
               </h1>
               <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-300">
-                Scan a card, paste an eBay listing, or batch drop photos. Each
-                draft flows into one review queue with identity checks, crop,
-                and market signal before it touches your vault.
+                Scan a card, paste an eBay listing, or batch drop photos. Every
+                source lands in one review queue with identity, crop, and market
+                checks before it touches your vault.
               </p>
-              <div className="mt-5 grid max-w-2xl gap-2 sm:grid-cols-3">
-                <UploadStat label="Drafts" value={drafts.length.toString()} />
-                <UploadStat label="Identification" value="OCR + eBay" />
-                <UploadStat label="Market" value="Comps ready" />
-              </div>
-              <div className="mt-5 grid max-w-3xl gap-2 md:grid-cols-3">
-                <ImportStep label="1" title="Scan" copy="Phone camera or image upload." />
-                <ImportStep label="2" title="Identify" copy="OCR, eBay aspects, parser." />
-                <ImportStep label="3" title="Review" copy="Confirm value and save." />
+              <div className="mt-5 flex flex-wrap gap-2">
+                {[
+                  `${drafts.length} drafts`,
+                  "OCR scan",
+                  "eBay import",
+                  "Comps panel",
+                ].map((item) => (
+                  <span
+                    key={item}
+                    className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-xs font-black text-slate-300"
+                  >
+                    {item}
+                  </span>
+                ))}
               </div>
             </div>
 
@@ -1137,39 +1143,6 @@ function Field({
   );
 }
 
-function UploadStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-black/25 p-3">
-      <p className="truncate text-lg font-black text-white">{value}</p>
-      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-        {label}
-      </p>
-    </div>
-  );
-}
-
-function ImportStep({
-  copy,
-  label,
-  title,
-}: {
-  copy: string;
-  label: string;
-  title: string;
-}) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-black/20 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-      <div className="flex items-center gap-2">
-        <span className="grid size-7 place-items-center rounded-lg bg-[#ff5533] text-[11px] font-black text-white">
-          {label}
-        </span>
-        <p className="text-sm font-black text-white">{title}</p>
-      </div>
-      <p className="mt-2 text-xs font-bold leading-5 text-slate-400">{copy}</p>
-    </div>
-  );
-}
-
 function ImportIntelligencePanel({
   draft,
   duplicate,
@@ -1573,34 +1546,11 @@ function playerFromTitle(title: string) {
 }
 
 function sportFromTitle(title: string) {
-  const lower = title.toLowerCase();
-
-  if (/(nba|basketball|lakers|celtics|raptors|warriors|bulls|knicks)/.test(lower)) return "Basketball";
-  if (/(mlb|baseball|blue jays|yankees|dodgers|reds|braves|mets)/.test(lower)) return "Baseball";
-  if (/(nfl|football|steelers|cowboys|packers|chiefs|49ers)/.test(lower)) return "Football";
-  if (/(nhl|hockey|maple leafs|canadiens|bruins|oilers)/.test(lower)) return "Hockey";
-  if (/(soccer|football club|fc |fifa|uefa|premier league)/.test(lower)) return "Soccer";
-  if (/(pokemon|pokémon|charizard|pikachu|tcg)/.test(lower)) return "Pokemon";
-  if (/(magic the gathering|mtg|planeswalker)/.test(lower)) return "Magic";
-
-  return sportFromFile(title);
+  return sportFromText(title) || sportFromFile(title);
 }
 
 function teamFromTitle(title: string) {
-  const teams = [
-    "Raptors",
-    "Reds",
-    "Steelers",
-    "Lakers",
-    "Yankees",
-    "Maple Leafs",
-    "Blue Jays",
-    "Dodgers",
-    "Celtics",
-    "Warriors",
-  ];
-
-  return teams.find((team) => title.toLowerCase().includes(team.toLowerCase())) ?? "";
+  return teamFromText(title);
 }
 
 function setFromTitle(title: string) {
@@ -1653,3 +1603,4 @@ function brandFromFile(fileName: string) {
 
   return match ?? "";
 }
+

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkRateLimit, requestIdentifier } from "@/lib/rate-limit";
+import { sportFromText, teamFromText } from "@/lib/card-taxonomy";
 
 type VisionCardRequest = {
   imageBase64?: string;
@@ -224,6 +225,7 @@ function extractCardFields(text: string, labels: string[]): VisionFields {
   const cardNumber = findCardNumber(normalizedText);
   const certNumber = findCertNumber(normalizedText, grade.value);
   const sport = findSport(normalizedText, labels);
+  const team = findTeam(normalizedText);
   const player = findPlayerCandidate(lines, normalizedText);
   const set = findSetCandidate(lines, brand.value, parallel.value);
 
@@ -239,7 +241,7 @@ function extractCardFields(text: string, labels: string[]): VisionFields {
     player,
     set,
     sport,
-    team: emptyField(),
+    team,
     year,
   };
 }
@@ -277,33 +279,15 @@ function findCertNumber(text: string, grade: string) {
 }
 
 function findSport(text: string, labels: string[]) {
-  const lower = `${text} ${labels.join(" ")}`.toLowerCase();
-
-  if (/(basketball|nba|lakers|celtics|raptors|warriors|bulls|knicks)/.test(lower)) {
-    return { confidence: 0.8, value: "Basketball" };
-  }
-
-  if (/(baseball|mlb|blue jays|yankees|dodgers|reds|braves|mets)/.test(lower)) {
-    return { confidence: 0.8, value: "Baseball" };
-  }
-
-  if (/(football|nfl|steelers|cowboys|packers|chiefs|49ers)/.test(lower)) {
-    return { confidence: 0.78, value: "Football" };
-  }
-
-  if (/(hockey|nhl|maple leafs|canadiens|bruins|oilers)/.test(lower)) {
-    return { confidence: 0.78, value: "Hockey" };
-  }
-
-  if (/(soccer|fifa|uefa|premier league|football club)/.test(lower)) {
-    return { confidence: 0.72, value: "Soccer" };
-  }
-
-  if (/(pokemon|pokémon|tcg|charizard|pikachu)/.test(lower)) {
-    return { confidence: 0.78, value: "Pokemon" };
-  }
+  const sport = sportFromText(`${text} ${labels.join(" ")}`);
+  if (sport) return { confidence: 0.8, value: sport };
 
   return emptyField();
+}
+
+function findTeam(text: string) {
+  const team = teamFromText(text);
+  return team ? { confidence: 0.75, value: team } : emptyField();
 }
 
 function findPlayerCandidate(lines: string[], text: string) {

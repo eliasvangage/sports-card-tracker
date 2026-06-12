@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { EbayConfigError, getEbayAppToken } from "@/lib/ebay";
 import { checkRateLimit, requestIdentifier } from "@/lib/rate-limit";
+import { sportFromText, teamFromText } from "@/lib/card-taxonomy";
 
 type EbayImage = {
   imageUrl?: string;
@@ -233,32 +234,11 @@ function setFromTitle(title: string) {
 }
 
 function sportFromTitle(title: string) {
-  const lower = title.toLowerCase();
-
-  if (/(nba|basketball|lakers|celtics|raptors|warriors|bulls|knicks)/.test(lower)) return "Basketball";
-  if (/(mlb|baseball|blue jays|yankees|dodgers|reds|braves|mets)/.test(lower)) return "Baseball";
-  if (/(nfl|football|steelers|cowboys|packers|chiefs|49ers)/.test(lower)) return "Football";
-  if (/(nhl|hockey|maple leafs|canadiens|bruins|oilers)/.test(lower)) return "Hockey";
-  if (/(soccer|football club|fc |fifa|uefa|premier league)/.test(lower)) return "Soccer";
-
-  return "";
+  return sportFromText(title);
 }
 
 function teamFromTitle(title: string) {
-  const teams = [
-    "Raptors",
-    "Reds",
-    "Steelers",
-    "Lakers",
-    "Yankees",
-    "Maple Leafs",
-    "Blue Jays",
-    "Dodgers",
-    "Celtics",
-    "Warriors",
-  ];
-
-  return teams.find((team) => title.toLowerCase().includes(team.toLowerCase())) ?? "";
+  return teamFromText(title);
 }
 
 function yearFromTitle(title: string) {

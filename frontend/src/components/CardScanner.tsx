@@ -69,8 +69,8 @@ export function CardScanner({
         isScanning ? "animate-pulse" : ""
       }`}
     >
-      <div className="grid gap-4 lg:grid-cols-[390px_minmax(0,1fr)]">
-        <label className="group relative flex min-h-[400px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed border-white/20 bg-black/30 p-4 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition hover:-translate-y-0.5 hover:border-white/35 hover:bg-white/[0.06]">
+      <div className="grid gap-4 lg:grid-cols-[310px_minmax(0,1fr)]">
+        <label className="group relative flex min-h-[285px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed border-white/20 bg-black/30 p-4 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition hover:-translate-y-0.5 hover:border-white/35 hover:bg-white/[0.06]">
           <div className="absolute inset-x-6 top-5 h-1 rounded-full bg-[linear-gradient(90deg,#ff5533,#f8e71c,#20e3b2,#38bdf8)] opacity-80" />
           {imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -94,12 +94,11 @@ export function CardScanner({
             <div className="mx-auto grid size-16 place-items-center rounded-2xl border border-white/10 bg-white/5 text-3xl font-black text-white shadow-[0_0_34px_rgba(255,85,51,0.28)]">
               +
             </div>
-            <p className="mt-4 text-xl font-black text-white">
-              Point camera at your card
+            <p className="mt-4 text-lg font-black text-white">
+              Scan card front
             </p>
-            <p className="mx-auto mt-2 max-w-xs text-sm font-bold leading-6 text-slate-400">
-              Capture a clean front image. CardRoster will read text, suggest
-              fields, and start the review draft.
+            <p className="mx-auto mt-2 max-w-xs text-xs font-bold leading-5 text-slate-400">
+              Camera or image upload. A review draft appears below.
             </p>
           </div>
           <input
@@ -119,18 +118,14 @@ export function CardScanner({
                 <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
                   Card scanner
                 </p>
-                <h2 className="mt-2 text-3xl font-black leading-tight text-white">
-                  Scan once, review fast.
+                <h2 className="mt-2 text-2xl font-black leading-tight text-white">
+                  Scanner
                 </h2>
               </div>
-              <span className="rounded-full border border-[#ff5533]/30 bg-[#ff5533]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-orange-100">
-                OCR ready
-              </span>
             </div>
-            <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-300">
-              Capture the card front, then review identity, value, and crop in
-              one queue. High confidence fills are shortcuts; low confidence
-              fields stay editable.
+            <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-slate-300">
+              Pulls readable text into editable fields. Confidence badges only
+              appear after a scan.
             </p>
 
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -139,8 +134,8 @@ export function CardScanner({
                   <ConfidenceField key={key} label={key} field={field} />
                 ))
               ) : (
-                <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm font-bold text-slate-400 sm:col-span-2">
-                  No scan loaded yet. Use the camera/import area to start a draft.
+                <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 text-xs font-bold text-slate-400 sm:col-span-2">
+                  Scan results will appear here.
                 </div>
               )}
             </div>
