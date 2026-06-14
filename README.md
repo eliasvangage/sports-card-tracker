@@ -16,3 +16,5 @@
   - cert number
   - grading fee
 - Added direct lookup links per card so collectors can verify comps instead of trusting one estimated value.
+ 
+ 
