@@ -20,11 +20,25 @@ type CompResult = {
   condition: string;
   endDate: string;
   imageUrl?: string;
+  identity?: CompIdentity;
   matchReasons?: string[];
   matchScore?: number;
   price: number;
   title: string;
   url: string;
+};
+
+type CompIdentity = {
+  cardNumber: string;
+  isChromeBlack: boolean;
+  isGraded: boolean;
+  isRaw: boolean;
+  playerHits: number;
+  playerTokenCount: number;
+  setHits: number;
+  setTokenCount: number;
+  variantConflicts: string[];
+  yearHit: boolean;
 };
 
 const allowedParams = ["player", "year", "brand", "set", "parallel", "grade", "cardNumber"] as const;
@@ -45,9 +59,11 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const fields = Object.fromEntries(
-    allowedParams.map((key) => [key, cleanSearchPart(searchParams.get(key))]),
-  ) as Record<(typeof allowedParams)[number], string>;
+  const fields = normalizeFields(
+    Object.fromEntries(
+      allowedParams.map((key) => [key, cleanSearchPart(searchParams.get(key))]),
+    ) as Record<(typeof allowedParams)[number], string>,
+  );
   const query = buildCompQuery(fields);
 
   if (query.length < 3) {
@@ -89,20 +105,31 @@ export async function GET(request: Request) {
     );
   }
 
-  const matchedComps = scoreAndFilterComps(comps, fields);
+  const rankedComps = rankComps(comps, fields);
+  const matchedComps = rankedComps.filter((comp) => comp.verdict === "match");
+  const nearComps = rankedComps.filter((comp) => comp.verdict === "near").slice(0, 4);
   const filteredComps = removeOutliers(matchedComps).slice(0, 10);
   const prices = filteredComps.map((comp) => comp.price);
+  const lastSold = filteredComps
+    .map((comp) => comp.endDate)
+    .filter(Boolean)
+    .sort()
+    .at(-1) ?? "";
 
   return NextResponse.json({
     avgPrice: averagePrice(prices),
+    confidence: marketConfidence(filteredComps, fields),
     lowPrice: prices.length ? Math.min(...prices) : 0,
     highPrice: prices.length ? Math.max(...prices) : 0,
+    medianPrice: medianPrice(prices),
     minMatchScore: minimumMatchScore(fields),
     rejected: Math.max(0, comps.length - matchedComps.length),
     samples: filteredComps.length,
+    lastSold,
     totalFound: comps.length,
     outliersTrimmed: Math.max(0, matchedComps.length - filteredComps.length),
     comps: filteredComps.slice(0, 5),
+    nearComps,
     dataSource,
     query,
   });
@@ -120,7 +147,7 @@ function buildCompQuery(fields: Record<(typeof allowedParams)[number], string>) 
   return [
     fields.year,
     fields.brand,
-    compactSet(fields.set),
+    compactSet(fields.set, fields.year, fields.brand),
     fields.player,
     fields.cardNumber,
     significantParallel(fields.parallel),
@@ -138,7 +165,7 @@ function buildCompQueries(fields: Record<(typeof allowedParams)[number], string>
   const withoutGrade = [
     fields.year,
     fields.brand,
-    compactSet(fields.set),
+    compactSet(fields.set, fields.year, fields.brand),
     fields.player,
     fields.cardNumber,
     significantParallel(fields.parallel),
@@ -146,14 +173,21 @@ function buildCompQueries(fields: Record<(typeof allowedParams)[number], string>
   const identity = [
     fields.year,
     fields.brand,
-    compactSet(fields.set),
+    compactSet(fields.set, fields.year, fields.brand),
     fields.player,
     fields.cardNumber,
   ].filter(Boolean).join(" ");
-  const broad = [fields.year, fields.brand, fields.player].filter(Boolean).join(" ");
+  const setFirst = [
+    fields.year,
+    fields.brand,
+    exactSetPhrase(fields.set, fields.year, fields.brand),
+    fields.player,
+    fields.cardNumber,
+  ].filter(Boolean).join(" ");
+  const broad = [fields.year, fields.brand, exactSetPhrase(fields.set, fields.year, fields.brand), fields.player].filter(Boolean).join(" ");
 
   return Array.from(
-    new Set([strict, withoutGrade, identity, broad].map((item) => item.replace(/\s+/g, " ").trim()).filter(Boolean)),
+    new Set([strict, setFirst, withoutGrade, identity, broad].map((item) => item.replace(/\s+/g, " ").trim()).filter(Boolean)),
   );
 }
 
@@ -281,52 +315,60 @@ function toCompResult(item: EbayCompItem): CompResult | null {
   };
 }
 
-function scoreAndFilterComps(
+function rankComps(
   comps: CompResult[],
   fields: Record<(typeof allowedParams)[number], string>,
 ) {
-  const scored = comps
-    .map((comp) => ({
-      ...comp,
-      ...scoreCompMatch(comp.title, fields),
-    }))
-    .filter(
-      (comp) =>
-        (comp.matchScore ?? 0) >= minimumMatchScore(fields) &&
-        hasRequiredIdentity(comp.title, fields) &&
-        !hasVariantConflict(comp.title, fields),
-    )
-    .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0) || a.price - b.price);
-
-  if (scored.length > 0) return scored;
-
   return comps
-    .map((comp) => ({
+    .map((comp) => {
+      const identity = analyzeCompIdentity(comp.title, fields);
+      const scoredComp = {
       ...comp,
-      ...scoreCompMatch(comp.title, fields, true),
-    }))
-    .filter(
-      (comp) =>
-        (comp.matchScore ?? 0) >= relaxedMinimumMatchScore(fields) &&
-        hasCoreIdentity(comp.title, fields),
-    )
+      identity,
+      ...scoreCompMatch(comp.title, fields),
+      };
+
+      return {
+        ...scoredComp,
+        verdict: compVerdict(scoredComp, fields),
+      };
+    })
     .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0) || a.price - b.price);
 }
 
-function hasRequiredIdentity(
-  title: string,
+function compVerdict(
+  comp: CompResult & { identity: CompIdentity },
   fields: Record<(typeof allowedParams)[number], string>,
 ) {
-  if (!fields.cardNumber) return true;
+  const score = comp.matchScore ?? 0;
+  const cardNumber = normalizeCardNumber(fields.cardNumber);
+  const expectedSetTokens = importantSetTokens(fields.set, fields.year, fields.brand);
+  const hasPlayer = comp.identity.playerHits >= Math.max(1, comp.identity.playerTokenCount - 1);
+  const hasYear = !fields.year || comp.identity.yearHit;
+  const hasSet =
+    expectedSetTokens.length === 0 ||
+    comp.identity.setHits >= Math.min(expectedSetTokens.length, fields.set.toLowerCase().includes("chrome black") ? 2 : 1);
+  const hasCardNumber = !cardNumber || comp.identity.cardNumber === cardNumber;
+  const gradeMatches =
+    !fields.grade ||
+    fields.grade === "Raw" ||
+    normalizeForMatch(comp.title).includes(normalizeForMatch(fields.grade));
+  const rawMatches =
+    fields.grade !== "Raw" || comp.identity.isRaw;
 
-  return cardNumberMatches(normalizeForMatch(title), normalizeCardNumber(fields.cardNumber));
+  if (!hasPlayer || !hasYear) return "reject";
+  if (cardNumber && comp.identity.cardNumber && comp.identity.cardNumber !== cardNumber) return "reject";
+  if (cardNumber && !comp.identity.cardNumber) return "near";
+  if (fields.set.toLowerCase().includes("chrome black") && !comp.identity.isChromeBlack) return "reject";
+  if (!hasSet) return "near";
+  if (comp.identity.variantConflicts.length) return "near";
+  if (!gradeMatches || !rawMatches) return "near";
+  if (score >= minimumMatchScore(fields) && hasCardNumber) return "match";
+
+  return score >= nearMatchScore(fields) ? "near" : "reject";
 }
 
-function scoreCompMatch(
-  title: string,
-  fields: Record<(typeof allowedParams)[number], string>,
-  relaxed = false,
-) {
+function scoreCompMatch(title: string, fields: Record<(typeof allowedParams)[number], string>) {
   const normalizedTitle = normalizeForMatch(title);
   const reasons: string[] = [];
   let score = 0;
@@ -362,7 +404,7 @@ function scoreCompMatch(
     }
   }
 
-  const setTokens = keywordTokens(fields.set);
+  const setTokens = importantSetTokens(fields.set, fields.year, fields.brand);
   if (setTokens.length) {
     possible += 12;
     const setHits = countHits(normalizedTitle, setTokens);
@@ -376,7 +418,7 @@ function scoreCompMatch(
   }
 
   const parallelTokens = keywordTokens(fields.parallel).filter(
-    (token) => !["base", "card"].includes(token),
+    (token) => !["base", "card", "none"].includes(token),
   );
   if (parallelTokens.length) {
     possible += 10;
@@ -390,10 +432,8 @@ function scoreCompMatch(
     possible += 6;
     const number = normalizeCardNumber(fields.cardNumber);
     if (number && cardNumberMatches(normalizedTitle, number)) {
-      score += 6;
+      score += 16;
       reasons.push("card #");
-    } else if (relaxed) {
-      possible -= 6;
     }
   }
 
@@ -415,42 +455,6 @@ function scoreCompMatch(
   return { matchReasons: reasons, matchScore };
 }
 
-function hasCoreIdentity(
-  title: string,
-  fields: Record<(typeof allowedParams)[number], string>,
-) {
-  const normalizedTitle = normalizeForMatch(title);
-  const playerTokens = keywordTokens(fields.player);
-  const playerHits = countHits(normalizedTitle, playerTokens);
-  const yearMatches = !fields.year || normalizedTitle.includes(normalizeForMatch(fields.year));
-  const brandTokens = brandMatchTokens(fields.brand);
-  const brandMatches =
-    brandTokens.length === 0 || brandTokens.some((token) => normalizedTitle.includes(token));
-
-  return playerHits >= Math.max(1, playerTokens.length - 1) && yearMatches && brandMatches;
-}
-
-function hasVariantConflict(
-  title: string,
-  fields: Record<(typeof allowedParams)[number], string>,
-) {
-  const normalizedTitle = normalizeForMatch(title);
-  const normalizedParallel = normalizeForMatch(fields.parallel);
-  const titleSerial = title.match(/\/\s*(\d{2,4})\b/)?.[1] ?? "";
-  const cardSerial = fields.parallel.match(/\/\s*(\d{2,4})\b/)?.[1] ?? "";
-
-  if (titleSerial && cardSerial && titleSerial !== cardSerial) return true;
-
-  const titleColors = variantColors.filter((color) =>
-    new RegExp(`\\b${color}\\b`).test(normalizedTitle),
-  );
-  const cardColors = variantColors.filter((color) =>
-    new RegExp(`\\b${color}\\b`).test(normalizedParallel),
-  );
-
-  return titleColors.some((color) => !cardColors.includes(color));
-}
-
 function minimumMatchScore(fields: Record<(typeof allowedParams)[number], string>) {
   if (fields.cardNumber || fields.parallel || (fields.grade && fields.grade !== "Raw")) {
     return 72;
@@ -465,6 +469,10 @@ function relaxedMinimumMatchScore(fields: Record<(typeof allowedParams)[number],
   if (fields.grade && fields.grade !== "Raw") return 64;
   if (fields.cardNumber || fields.parallel) return 60;
   return 56;
+}
+
+function nearMatchScore(fields: Record<(typeof allowedParams)[number], string>) {
+  return fields.cardNumber || fields.set ? 54 : relaxedMinimumMatchScore(fields);
 }
 
 function normalizeForMatch(value: string) {
@@ -482,8 +490,8 @@ function normalizeCardNumber(value: string) {
 }
 
 function cardNumberMatches(title: string, cardNumber: string) {
-  const compactTitle = title.replace(/\s+/g, "");
-  return compactTitle.includes(cardNumber) || compactTitle.includes(cardNumber.replace("-", ""));
+  const escaped = escapeRegExp(cardNumber.replace("-", ""));
+  return new RegExp(`(?:^|[#\\s-])${escaped}(?:$|[^0-9])`).test(title);
 }
 
 function keywordTokens(value: string) {
@@ -511,20 +519,113 @@ function brandMatchTokens(brand: string) {
   return aliases[normalized] ?? keywordTokens(brand);
 }
 
-function compactSet(value: string) {
-  const tokens = keywordTokens(value).filter(
-    (token) => !["base", "set", "series"].includes(token),
-  );
+function exactSetPhrase(value: string, year = "", brand = "") {
+  const tokens = importantSetTokens(value, year, brand);
+  return tokens.join(" ");
+}
 
-  return tokens.slice(0, 2).join(" ");
+function compactSet(value: string, year = "", brand = "") {
+  const tokens = importantSetTokens(value, year, brand);
+
+  return tokens.slice(0, 3).join(" ");
 }
 
 function significantParallel(value: string) {
   const tokens = keywordTokens(value).filter(
-    (token) => !["base", "card", "parallel", "refractor", "holo"].includes(token),
+    (token) => !["base", "card", "parallel", "refractor", "holo", "none"].includes(token),
   );
 
   return tokens[0] ?? "";
+}
+
+function importantSetTokens(value: string, year = "", brand = "") {
+  const normalizedYear = normalizeForMatch(year);
+  const normalizedBrand = normalizeForMatch(brand);
+
+  return keywordTokens(value).filter(
+    (token, index, tokens) =>
+      !["base", "set"].includes(token) &&
+      token !== normalizedYear &&
+      token !== normalizedBrand &&
+      !(token === "topps" && tokens.filter((item) => item === "topps").length > 1) &&
+      !(token === "2026" && index > 0),
+  );
+}
+
+function analyzeCompIdentity(
+  title: string,
+  fields: Record<(typeof allowedParams)[number], string>,
+): CompIdentity {
+  const normalizedTitle = normalizeForMatch(title);
+  const playerTokens = keywordTokens(fields.player);
+  const setTokens = importantSetTokens(fields.set, fields.year, fields.brand);
+  const titleCardNumber = extractTitleCardNumber(title);
+  const normalizedParallel = normalizeForMatch(fields.parallel);
+  const titleSerial = title.match(/\/\s*(\d{2,4})\b/)?.[1] ?? "";
+  const cardSerial = fields.parallel.match(/\/\s*(\d{2,4})\b/)?.[1] ?? "";
+  const titleColors = variantColors.filter((color) =>
+    new RegExp(`\\b${color}\\b`).test(normalizedTitle),
+  );
+  const cardColors = variantColors.filter((color) =>
+    new RegExp(`\\b${color}\\b`).test(normalizedParallel),
+  );
+  const variantConflicts = [
+    titleSerial && cardSerial && titleSerial !== cardSerial ? `/${titleSerial}` : "",
+    ...titleColors.filter((color) => cardColors.length > 0 && !cardColors.includes(color)),
+  ].filter(Boolean);
+
+  return {
+    cardNumber: titleCardNumber,
+    isChromeBlack: /\bchrome\s+black\b/.test(normalizedTitle),
+    isGraded: /\b(psa|bgs|sgc|cgc|csg|hga)\b/.test(normalizedTitle),
+    isRaw: !/\b(psa|bgs|sgc|cgc|csg|hga)\b/.test(normalizedTitle),
+    playerHits: countHits(normalizedTitle, playerTokens),
+    playerTokenCount: playerTokens.length,
+    setHits: countHits(normalizedTitle, setTokens),
+    setTokenCount: setTokens.length,
+    variantConflicts,
+    yearHit: !fields.year || normalizedTitle.includes(normalizeForMatch(fields.year)),
+  };
+}
+
+function extractTitleCardNumber(title: string) {
+  return normalizeCardNumber(
+    title.match(/#\s*([A-Z]{0,5}-?\d+[A-Z]?)\b/i)?.[1] ??
+      title.match(/\b(?:card\s*(?:no\.?|number|#)\s*)([A-Z]{0,5}-?\d+[A-Z]?)\b/i)?.[1] ??
+      "",
+  );
+}
+
+function normalizeFields(fields: Record<(typeof allowedParams)[number], string>) {
+  const normalized = { ...fields };
+  normalized.cardNumber = normalizeCardNumber(normalized.cardNumber);
+  normalized.parallel = normalizeEmptyish(normalized.parallel);
+  normalized.grade = normalizeEmptyish(normalized.grade);
+  normalized.set = dedupeSetText(normalized.set, normalized.year, normalized.brand);
+  return normalized;
+}
+
+function normalizeEmptyish(value: string) {
+  return /^(none|n\/a|na|null|undefined|not specified|unknown)$/i.test(value.trim())
+    ? ""
+    : value.trim();
+}
+
+function dedupeSetText(value: string, year: string, brand: string) {
+  const tokens = normalizeForMatch(value).split(" ").filter(Boolean);
+  const seen = new Set<string>();
+  const result = tokens.filter((token) => {
+    const key = `${token}:${token === normalizeForMatch(year) || token === normalizeForMatch(brand) ? "core" : "set"}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return result.join(" ");
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function countHits(title: string, tokens: string[]) {
@@ -569,6 +670,38 @@ function averagePrice(prices: number[]) {
 
   const total = prices.reduce((sum, price) => sum + price, 0);
   return Math.round((total / prices.length) * 100) / 100;
+}
+
+function medianPrice(prices: number[]) {
+  if (prices.length === 0) return 0;
+
+  const sorted = [...prices].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  const median =
+    sorted.length % 2 === 0
+      ? (sorted[middle - 1] + sorted[middle]) / 2
+      : sorted[middle];
+
+  return Math.round(median * 100) / 100;
+}
+
+function marketConfidence(
+  comps: Array<CompResult & { matchScore?: number }>,
+  fields: Record<(typeof allowedParams)[number], string>,
+) {
+  if (!comps.length) return 0;
+
+  const sampleScore = Math.min(35, comps.length * 7);
+  const matchScore =
+    comps.reduce((total, comp) => total + (comp.matchScore ?? 0), 0) / comps.length;
+  const identityScore =
+    fields.cardNumber && fields.set
+      ? 30
+      : fields.cardNumber || fields.set
+        ? 22
+        : 14;
+
+  return Math.min(100, Math.round(sampleScore + matchScore * 0.35 + identityScore));
 }
 
 function isCompResult(comp: CompResult | null): comp is CompResult {
