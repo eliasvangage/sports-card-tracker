@@ -259,7 +259,7 @@ export default function UploadPage() {
         grade: listing.grade || gradeFromTitle(title),
         color: colors[drafts.length % colors.length],
         collection: batchCollection || collections[0] || "Main Collection",
-        estimatedValue: showMoney ? (listing.price ?? "") : "",
+        estimatedValue: "",
         purchasePrice: "",
         salePrice: "",
         saleStatus: "Holding",

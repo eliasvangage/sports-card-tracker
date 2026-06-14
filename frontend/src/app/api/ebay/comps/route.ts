@@ -54,12 +54,13 @@ export async function GET(request: Request) {
   }
 
   let comps: CompResult[] | null = null;
-  let dataSource = "active";
+  let dataSource = "sold";
 
   try {
     const soldResults = await findCompletedComps(query);
-    comps = soldResults ?? (await findActiveComps(query));
-    dataSource = soldResults ? "sold" : "active";
+    const includeActiveFallback = searchParams.get("includeActive") === "1";
+    comps = soldResults ?? (includeActiveFallback ? await findActiveComps(query) : []);
+    dataSource = soldResults ? "sold" : includeActiveFallback ? "active" : "sold";
   } catch (error) {
     return NextResponse.json(
       {
@@ -242,8 +243,22 @@ function scoreAndFilterComps(
       ...comp,
       ...scoreCompMatch(comp.title, fields),
     }))
-    .filter((comp) => (comp.matchScore ?? 0) >= minimumMatchScore(fields))
+    .filter(
+      (comp) =>
+        (comp.matchScore ?? 0) >= minimumMatchScore(fields) &&
+        hasRequiredIdentity(comp.title, fields) &&
+        !hasVariantConflict(comp.title, fields),
+    )
     .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0) || a.price - b.price);
+}
+
+function hasRequiredIdentity(
+  title: string,
+  fields: Record<(typeof allowedParams)[number], string>,
+) {
+  if (!fields.cardNumber) return true;
+
+  return cardNumberMatches(normalizeForMatch(title), normalizeCardNumber(fields.cardNumber));
 }
 
 function scoreCompMatch(
@@ -312,7 +327,7 @@ function scoreCompMatch(
   if (fields.cardNumber) {
     possible += 6;
     const number = normalizeCardNumber(fields.cardNumber);
-    if (number && normalizedTitle.includes(number)) {
+    if (number && cardNumberMatches(normalizedTitle, number)) {
       score += 6;
       reasons.push("card #");
     }
@@ -334,6 +349,28 @@ function scoreCompMatch(
 
   const matchScore = possible ? Math.round((score / possible) * 100) : 0;
   return { matchReasons: reasons, matchScore };
+}
+
+function hasVariantConflict(
+  title: string,
+  fields: Record<(typeof allowedParams)[number], string>,
+) {
+  const normalizedTitle = normalizeForMatch(title);
+  const normalizedParallel = normalizeForMatch(fields.parallel);
+  const titleSerial = title.match(/\/\s*(\d{2,4})\b/)?.[1] ?? "";
+  const cardSerial = fields.parallel.match(/\/\s*(\d{2,4})\b/)?.[1] ?? "";
+
+  if (titleSerial && cardSerial && titleSerial !== cardSerial) return true;
+  if (titleSerial && !cardSerial) return true;
+
+  const titleColors = variantColors.filter((color) =>
+    new RegExp(`\\b${color}\\b`).test(normalizedTitle),
+  );
+  const cardColors = variantColors.filter((color) =>
+    new RegExp(`\\b${color}\\b`).test(normalizedParallel),
+  );
+
+  return titleColors.some((color) => !cardColors.includes(color));
 }
 
 function minimumMatchScore(fields: Record<(typeof allowedParams)[number], string>) {
@@ -358,6 +395,11 @@ function normalizeForMatch(value: string) {
 
 function normalizeCardNumber(value: string) {
   return normalizeForMatch(value).replace(/\s+/g, "");
+}
+
+function cardNumberMatches(title: string, cardNumber: string) {
+  const compactTitle = title.replace(/\s+/g, "");
+  return compactTitle.includes(cardNumber) || compactTitle.includes(cardNumber.replace("-", ""));
 }
 
 function keywordTokens(value: string) {
@@ -407,6 +449,20 @@ const matchStopWords = new Set([
   "rookie",
   "rc",
 ]);
+
+const variantColors = [
+  "aqua",
+  "black",
+  "blue",
+  "gold",
+  "green",
+  "orange",
+  "pink",
+  "purple",
+  "red",
+  "silver",
+  "yellow",
+];
 
 function averagePrice(prices: number[]) {
   if (prices.length === 0) return 0;

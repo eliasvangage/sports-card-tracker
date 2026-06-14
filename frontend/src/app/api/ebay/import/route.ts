@@ -164,6 +164,7 @@ function extractFromAspects(aspects: Record<string, string>, title: string): Asp
   const aspectSport = firstAspect(aspects, ["Sport"]);
   const grader = firstAspect(aspects, ["Professional Grader", "Grader"]);
   const grade = firstAspect(aspects, ["Grade"]);
+  const normalizedGrade = normalizeGrade(grader, grade);
   const team = normalizeTeam(aspectTeam, title);
 
   return {
@@ -175,19 +176,33 @@ function extractFromAspects(aspects: Record<string, string>, title: string): Asp
       "PSA Cert",
       "BGS Cert",
     ]),
-    grade: grader && grade ? `${grader.toUpperCase()} ${grade}` : "",
-    gradingCompany: grader,
+    grade: normalizedGrade.grade,
+    gradingCompany: normalizedGrade.gradingCompany,
     parallel: firstAspect(aspects, [
       "Parallel/Variety",
       "Parallel",
       "Variety",
       "Insert",
     ]),
-    player: firstAspect(aspects, ["Player/Athlete", "Player", "Athlete"]),
+    player: cleanPlayerName(firstAspect(aspects, ["Player/Athlete", "Player", "Athlete"])),
     set: firstAspect(aspects, ["Set", "Product"]),
     sport: aspectSport || sportFromText(`${title} ${team} ${aspectTeam}`),
     team,
     year: firstAspect(aspects, ["Season", "Year Manufactured", "Year"]),
+  };
+}
+
+function normalizeGrade(grader: string, grade: string) {
+  if (
+    /not professionally graded|ungraded|raw/i.test(grader) ||
+    /not professionally graded|ungraded|raw/i.test(grade)
+  ) {
+    return { grade: "", gradingCompany: "" };
+  }
+
+  return {
+    grade: grader && grade ? `${grader.toUpperCase()} ${grade}` : "",
+    gradingCompany: grader,
   };
 }
 
@@ -227,7 +242,7 @@ function scoreFields(aspects: AspectFields, parsed: ParsedTitle) {
     grade: field(aspects.grade, parsed.grade || "Raw", 0.98, parsed.grade ? 0.9 : 0.55),
     gradingCompany: field(aspects.gradingCompany, parsed.gradingCompany, 0.98, 0.9),
     parallel: field(aspects.parallel, parsed.parallel, 0.9, 0.72),
-    player: field(aspects.player, parsed.player, 0.95, 0.68),
+    player: field(bestPlayer(aspects.player, parsed.player, parsed.cardNumber), parsed.player, 0.95, 0.68),
     set: field(aspects.set, parsed.set, 0.9, 0.62),
     sport: field(aspects.sport, parsed.sport, 0.98, 0.7),
     team: field(aspects.team, parsed.team, 0.9, 0.72),
@@ -401,30 +416,35 @@ function parseTitle(title: string) {
   const grade = gradeMatch ? `${gradeMatch[1].toUpperCase()} ${gradeMatch[2]}` : "";
   const gradingCompany = gradeMatch?.[1]?.toUpperCase() ?? "";
   const certNumber = title.match(/\b(\d{8,10})\b/)?.[1] ?? "";
-  const cardNumber = title.match(/#\s*([A-Z]?\d+[A-Z]?)\b/i)?.[1] ?? "";
+  const cardNumber =
+    title.match(/#\s*([A-Z]{0,5}-?\d+[A-Z]?)\b/i)?.[1] ??
+    title.match(/\b([A-Z]{1,5}-\d{1,4}[A-Z]?)\b/i)?.[1] ??
+    "";
   const set = setFromTitle(title);
   const noise = [
     year,
     brand,
+    set,
+    parallel,
     grade,
     certNumber,
-    cardNumber ? `#${cardNumber}` : "",
+    cardNumber ? `#?\\s*${escapeRegExp(cardNumber)}` : "",
     "/\\d{2,4}",
     "PSA|BGS|SGC|CSG|HGA|CGC",
-    "RC|SP|SSP|AUTO|AUTOGRAPH|PATCH|REFRACTOR|CHROME|PRIZM|GOLD|SILVER|BLUE|RED|ROOKIE|GEM|MINT|NM|HOT|INVEST|RARE|FREE SHIP",
+    "SAPPHIRE|RC|SP|SSP|AUTO|AUTOGRAPH|PATCH|REFRACTOR|CHROME|PRIZM|GOLD|SILVER|BLUE|RED|YELLOW|ROOKIE|GEM|MINT|NM|HOT|INVEST|RARE|FREE SHIP|CALLED UP",
   ]
     .filter(Boolean)
     .join("|");
-  const player = titleCase(
+  const player = cleanPlayerName(titleCase(
     title
       .replace(new RegExp(noise, "gi"), " ")
       .replace(/[^\w\s.'-]/g, " ")
       .replace(/\s+/g, " ")
       .trim()
       .split(" ")
-      .slice(0, 3)
+      .slice(0, 2)
       .join(" "),
-  );
+  ));
 
   return {
     brand,
@@ -439,6 +459,31 @@ function parseTitle(title: string) {
     team: teamFromText(title),
     year,
   };
+}
+
+function bestPlayer(aspectPlayer: string, parsedPlayer: string, cardNumber: string) {
+  const cleanAspect = cleanPlayerName(aspectPlayer);
+  const cleanParsed = cleanPlayerName(parsedPlayer);
+  const suspiciousAspect = Boolean(
+    cleanAspect &&
+      (cardNumber && normalizeLoose(cleanAspect).includes(normalizeLoose(cardNumber)) ||
+        /\b(sapphire|chrome|bowman|topps|panini|select|prizm|bcp)\b/i.test(cleanAspect)),
+  );
+
+  if (suspiciousAspect && cleanParsed) return "";
+  return cleanAspect;
+}
+
+function cleanPlayerName(value: string) {
+  return value
+    .replace(/\b[A-Z]{1,5}-\d{1,4}[A-Z]?\b/gi, " ")
+    .replace(/\b(sapphire|chrome|bowman|topps|panini|select|prizm|rookie|card)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeLoose(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function keywordInTitle(upperTitle: string, keyword: string) {

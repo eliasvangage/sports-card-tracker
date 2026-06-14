@@ -116,12 +116,10 @@ export function SoldComps({
             eBay comps
           </p>
           <h4 className="mt-1 text-lg font-black text-white">
-            {data?.dataSource === "sold" ? "Sold comps" : "Market estimate"}
+            {data?.dataSource === "sold" ? "Sold comps" : "Market check"}
           </h4>
           <p className="mt-1 text-xs font-bold text-slate-500">
-            {data?.dataSource === "sold"
-              ? "Completed eBay sales filtered by match strength."
-              : "Active listings filtered by match strength."}
+            Completed eBay sales filtered by match strength.
           </p>
         </div>
         {data?.query ? (
@@ -133,7 +131,7 @@ export function SoldComps({
 
       {!canFetch ? (
         <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3 text-xs font-bold leading-5 text-slate-400">
-          Add at least player and year to scan recent eBay listings.
+          Add at least player and year to scan sold eBay comps.
         </div>
       ) : isLoading ? (
         <CompsSkeleton compact={compact} />
@@ -202,7 +200,7 @@ export function SoldComps({
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 p-2.5">
             <p className="text-xs font-bold text-slate-400">
-              {data.samples} {data.dataSource === "sold" ? "sold eBay comps" : "recent eBay listings"}
+              {data.samples} sold eBay comps
               {typeof data.rejected === "number" && data.rejected > 0
                 ? ` / ${data.rejected} filtered out`
                 : ""}
@@ -242,8 +240,8 @@ export function SoldComps({
         </>
       ) : (
         <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3 text-xs font-bold leading-5 text-slate-400">
-          No recent eBay listings matched this card. Try removing grade or
-          parallel, or verify the player/year fields.
+          No sold eBay comps matched this card closely enough. Verify player,
+          card number, parallel, and year before using active listings as a fallback.
         </div>
       )}
     </section>

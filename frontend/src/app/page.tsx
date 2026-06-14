@@ -646,7 +646,7 @@ export default function Home() {
       </section>
 
       <section className="mx-auto grid max-w-[1440px] gap-4 px-4 pb-8 sm:px-6 xl:grid-cols-[230px_minmax(0,1fr)_320px]">
-        <aside className={`h-fit rounded-xl border border-white/10 ${activeTheme.panel} p-3 shadow-xl lg:sticky lg:top-20`}>
+        <aside className={`h-fit max-h-[calc(100vh-5.5rem)] overflow-y-auto rounded-xl border border-white/10 ${activeTheme.panel} p-3 shadow-xl lg:sticky lg:top-20`}>
           <RailSection title="Find">
             <input
               value={query}
@@ -887,9 +887,7 @@ export default function Home() {
                   <div className="mt-3 min-w-0">
                     <p className="truncate text-lg font-black text-white">{selectedCard.player}</p>
                     <p className="mt-1 truncate text-xs font-bold text-slate-400">
-                      {[selectedCard.year, selectedCard.brand, selectedCard.set, selectedCard.cardNumber ? `#${selectedCard.cardNumber}` : ""]
-                        .filter(Boolean)
-                        .join(" ")}
+                      {cardSubtitle(selectedCard)}
                     </p>
                   </div>
                   <div className="mt-3 grid grid-cols-3 gap-2">
@@ -2823,7 +2821,7 @@ function CardDetailModal({
             <span className="rounded-full border border-white/20 bg-white px-3 py-1 text-xs font-black text-[#111722]">
               {card.status}
             </span>
-            {card.grade && card.grade !== "Raw" ? (
+            {isDisplayGrade(card.grade) ? (
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-black text-slate-200">
                 {card.grade}
               </span>
@@ -3529,12 +3527,12 @@ function CardTile({
       }`}
     >
       <div className={`relative ${mode === "Showcase" ? "h-[320px]" : "h-[230px]"}`}>
-        <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-wrap gap-1.5">
+        <div className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[70%] flex-wrap gap-1.5">
           <span className="rounded-full border border-white/10 bg-black/60 px-2 py-1 text-[10px] font-black text-white backdrop-blur">
             {card.status}
           </span>
-          {card.grade && card.grade !== "Raw" ? (
-            <span className="rounded-full border border-white/10 bg-black/60 px-2 py-1 text-[10px] font-black text-slate-200 backdrop-blur">
+          {isDisplayGrade(card.grade) ? (
+            <span className="max-w-full truncate rounded-full border border-white/10 bg-black/60 px-2 py-1 text-[10px] font-black text-slate-200 backdrop-blur">
               {card.grade}
             </span>
           ) : null}
@@ -3568,10 +3566,8 @@ function CardTile({
             {card.team}
           </p>
         </div>
-        <p className={`${mode === "Showcase" ? "mt-5 text-base leading-7" : "mt-3 text-xs leading-5"} line-clamp-2 font-bold text-slate-100`}>
-          {[card.year, card.brand, card.set, card.cardNumber ? `#${card.cardNumber}` : ""]
-            .filter(Boolean)
-            .join(" ")}
+          <p className={`${mode === "Showcase" ? "mt-5 text-base leading-7" : "mt-3 text-xs leading-5"} line-clamp-2 font-bold text-slate-100`}>
+          {cardSubtitle(card)}
         </p>
         <div className="mt-auto pt-3">
           {card.tags?.length ? <TagRow tags={card.tags} compact /> : null}
@@ -3865,6 +3861,21 @@ function moneyValue(value?: string) {
 
 function cardValue(card: Card) {
   return moneyValue(card.estimatedValue) || moneyValue(card.purchasePrice);
+}
+
+function cardSubtitle(card: Card) {
+  const set = card.set && card.brand && card.set.includes(card.brand)
+    ? card.set
+    : [card.brand, card.set].filter(Boolean).join(" ");
+
+  return [card.year, set, card.cardNumber ? `#${card.cardNumber}` : ""]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function isDisplayGrade(grade?: string) {
+  if (!grade || grade === "Raw") return false;
+  return !/not professionally graded|ungraded/i.test(grade);
 }
 
 function cardSearchText(card: Card) {
