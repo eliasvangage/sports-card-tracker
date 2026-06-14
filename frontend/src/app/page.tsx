@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { SoldComps } from "@/components/SoldComps";
+import { getStorageUsageMB } from "@/lib/imageCompressor";
 
 type ThemeName = "Arena" | "Chrome" | "Hardwood";
 type DisplayMode = "Grid" | "Showcase" | "Compact";
@@ -166,6 +167,7 @@ export default function Home() {
     if (typeof window === "undefined") return "";
     return localStorage.getItem("cardroster.grailId") ?? "";
   });
+  const [storageUsageMB, setStorageUsageMB] = useState(() => getStorageUsageMB());
 
   useEffect(() => {
     localStorage.setItem("cardroster.collectionName", collectionName);
@@ -198,6 +200,14 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem("cardroster.showMoney", String(showMoney));
   }, [showMoney]);
+
+  useEffect(() => {
+    const refreshStorageUsage = window.setTimeout(() => {
+      setStorageUsageMB(getStorageUsageMB());
+    }, 0);
+
+    return () => window.clearTimeout(refreshStorageUsage);
+  }, [savedCards, savedCollections, collectionName, collectorProfile]);
 
   const activeTheme = themes[theme];
   const allCards = savedCards;
@@ -781,6 +791,18 @@ export default function Home() {
             }}
           />
 
+          {storageUsageMB > 40 ? (
+            <div className="mb-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 shadow-[0_0_30px_rgba(245,158,11,0.08)]">
+              <p className="text-[11px] font-black uppercase tracking-[0.22em] text-amber-300">
+                Storage warning
+              </p>
+              <p className="mt-1 text-sm font-bold text-amber-100">
+                Collection storage is getting full ({storageUsageMB.toFixed(1)}mb / ~50mb).
+                Move to cloud storage to keep adding cards.
+              </p>
+            </div>
+          ) : null}
+
           {grailCard ? (
             <GrailDisplay
               accent={activeTheme.accent}
@@ -828,7 +850,7 @@ export default function Home() {
                   onClick={() => setDisplayMode(mode)}
                   className={`h-9 rounded-lg px-3 text-xs font-black transition ${
                     displayMode === mode
-                      ? "bg-white text-[#111722] shadow-[0_8px_22px_rgba(255,255,255,0.12)]"
+                      ? "bg-[#ff5533] text-white shadow-[0_0_30px_rgba(255,85,51,0.15)]"
                       : "border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
                   }`}
                 >
@@ -1177,14 +1199,14 @@ export default function Home() {
 
 function displayModeClasses(mode: DisplayMode) {
   if (mode === "Compact") {
-    return "grid gap-3";
+    return "grid gap-1 overflow-hidden rounded-xl border border-white/10 bg-[#0d111a]";
   }
 
   if (mode === "Showcase") {
     return "grid gap-4";
   }
 
-  return "grid auto-rows-fr gap-4 [grid-template-columns:repeat(auto-fill,minmax(225px,1fr))]";
+  return "grid auto-rows-fr justify-center gap-4 [grid-template-columns:repeat(auto-fill,minmax(200px,260px))]";
 }
 
 function CollectionQuickNav({
@@ -3299,7 +3321,7 @@ function GrailDisplay({
   return (
     <button
       onClick={onSelect}
-      className="mb-4 grid w-full gap-5 overflow-hidden rounded-xl border border-white/10 bg-[radial-gradient(circle_at_18%_28%,rgba(255,255,255,0.12),transparent_26%),radial-gradient(circle_at_70%_0%,rgba(56,189,248,0.08),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.065),rgba(255,255,255,0.012))] p-4 text-left shadow-2xl transition hover:border-white/20 lg:grid-cols-[240px_minmax(0,1fr)]"
+      className="holo-border mb-4 grid w-full gap-5 overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_18%_28%,rgba(255,255,255,0.12),transparent_26%),radial-gradient(circle_at_70%_0%,rgba(56,189,248,0.08),transparent_30%),linear-gradient(135deg,#151b24,#0d111a)] p-4 text-left shadow-2xl transition hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)] lg:grid-cols-[240px_minmax(0,1fr)]"
     >
       <div className="h-[300px]">
         <CardPreview
@@ -3327,7 +3349,7 @@ function GrailDisplay({
           {card.year} {card.brand} {card.set}
         </p>
         <div className="mt-5 flex flex-wrap gap-2">
-          <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black text-[#111722]">
+          <span className="rounded-full bg-[#ff5533] px-3 py-1 text-[10px] font-black text-white shadow-[0_0_30px_rgba(255,85,51,0.15)]">
             {card.status}
           </span>
           <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black text-slate-300">
@@ -3378,7 +3400,7 @@ function EmptyGallery({
                 onClick={() => onDisplayChange(mode)}
                 className={`h-10 rounded-md px-3 text-xs font-black ${
                   displayMode === mode
-                    ? "bg-white text-[#111722]"
+                    ? "bg-[#ff5533] text-white shadow-[0_0_30px_rgba(255,85,51,0.15)]"
                     : "border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
                 }`}
               >
@@ -3502,32 +3524,50 @@ function CardTile({
   showMoney: boolean;
 }) {
   const value = cardValue(card);
+  const highlighted = isPremiumCard(card);
+  const visibleTags = sanitizeTags(card.tags).filter((tag) =>
+    ["Rookie", "Auto", "Patch", "Favorite"].includes(tag),
+  );
+  const selectedClass = selected
+    ? "border-[#ff5533]/60 shadow-[0_0_0_2px_rgba(255,85,51,0.3),0_20px_40px_rgba(0,0,0,0.4)]"
+    : "border-white/[0.08] shadow-[0_18px_38px_rgba(0,0,0,0.32)]";
 
   if (mode === "Compact") {
     return (
       <button
         onClick={onClick}
         onDoubleClick={onDoubleClick}
-        className={`flex items-center justify-between gap-4 rounded-lg bg-[#151b26] p-2.5 text-left transition hover:-translate-y-0.5 ${
-          selected ? "border-white/60" : "border-white/10"
-        } ${borderClass(borderStyle)}`}
+        className={`grid grid-cols-[40px_minmax(0,1fr)_auto_auto_auto] items-center gap-3 border-b border-white/5 bg-[#0d111a] px-3 py-2.5 text-left transition hover:bg-white/[0.03] ${
+          selected ? "shadow-[inset_3px_0_0_#ff5533]" : ""
+        }`}
       >
-        <div className="flex items-center gap-3">
-          <div className="relative h-11 w-8 overflow-hidden rounded border border-white/20 bg-black/25">
-            <EditedCardImage card={card} sizes="36px" accent={accent} />
-          </div>
-          <div>
-            <p className="text-sm font-black text-white">{card.player}</p>
-            <p className="text-xs text-slate-400">
-              {card.year} {card.brand} {card.set} | {card.grade}
-            </p>
-          </div>
+        <div className="relative h-14 w-10 overflow-hidden rounded-md border border-white/10 bg-[#151b24]">
+          {highlighted ? <div className="holo-shimmer pointer-events-none absolute inset-0 z-10 opacity-25" /> : null}
+          <EditedCardImage card={card} sizes="40px" accent={accent} />
         </div>
-        <div className="hidden text-right sm:block">
-          <p className="text-xs font-black text-white">
-            {showMoney && value ? formatMoney(value) : card.status}
-          </p>
-          <p className="mt-0.5 text-[10px] font-bold text-slate-500">{card.collection}</p>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-black text-white">{card.player}</p>
+          <p className="truncate text-xs font-bold text-slate-400">{cardSubtitle(card)}</p>
+        </div>
+        <span className="hidden rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black text-slate-300 sm:inline">
+          {isDisplayGrade(card.grade) ? card.grade : "Raw"}
+        </span>
+        <span className="hidden text-right text-xs font-black text-white md:block">
+          {showMoney && value ? formatMoney(value) : ""}
+        </span>
+        <div className="flex items-center gap-2 justify-self-end">
+          <span
+            className={`size-2 rounded-full ${
+              card.status === "For Trade"
+                ? "bg-[#ff5533]"
+                : card.status === "Wishlist"
+                  ? "bg-amber-500"
+                  : "bg-emerald-500"
+            }`}
+          />
+          <span className="hidden text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 lg:inline">
+            {card.status}
+          </span>
         </div>
       </button>
     );
@@ -3537,27 +3577,25 @@ function CardTile({
     <button
       onClick={onClick}
       onDoubleClick={onDoubleClick}
-      className={`group h-full rounded-xl bg-[#151b26] p-3 text-left transition hover:-translate-y-0.5 ${
-        selected ? "border-white/60" : "border-white/10"
-      } ${tileBorderClass(borderStyle)} ${
+      className={`group h-full overflow-hidden rounded-2xl border bg-[linear-gradient(145deg,#151b24,#0d111a)] p-3 text-left transition duration-150 ease-out hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)] ${selectedClass} ${
+        highlighted ? "holo-border" : ""
+      } ${tileBorderAccentClass(borderStyle)} ${
         mode === "Showcase"
-          ? "grid items-center gap-5 sm:grid-cols-[250px_minmax(0,1fr)]"
+          ? "grid items-center gap-5 sm:grid-cols-[320px_minmax(0,1fr)]"
           : "flex flex-col"
       }`}
     >
-      <div className={`relative ${mode === "Showcase" ? "h-[320px]" : "h-[230px]"}`}>
-        <div className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[70%] flex-wrap gap-1.5">
-          <span className="rounded-full border border-white/10 bg-black/60 px-2 py-1 text-[10px] font-black text-white backdrop-blur">
-            {card.status}
-          </span>
-          {isDisplayGrade(card.grade) ? (
-            <span className="max-w-full truncate rounded-full border border-white/10 bg-black/60 px-2 py-1 text-[10px] font-black text-slate-200 backdrop-blur">
-              {card.grade}
-            </span>
-          ) : null}
-        </div>
+      <div className={`relative overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] ${mode === "Showcase" ? "h-[320px]" : "h-[230px]"}`}>
+        {highlighted ? <div className="holo-shimmer pointer-events-none absolute inset-0 z-10 opacity-20" /> : null}
+        {card.status === "For Trade" ? (
+          <div className="pointer-events-none absolute right-2 top-2 z-20 rounded-full bg-[#ff5533] px-2 py-1 text-[9px] font-black text-white shadow-[0_0_20px_rgba(255,85,51,0.25)]">
+            FOR TRADE
+          </div>
+        ) : null}
         {showMoney && value ? (
-          <div className="pointer-events-none absolute right-2 top-2 z-10 rounded-full border border-emerald-300/20 bg-emerald-300/15 px-2 py-1 text-[10px] font-black text-emerald-100 backdrop-blur">
+          <div className={`pointer-events-none absolute z-20 rounded-full border border-emerald-300/20 bg-emerald-300/15 px-2 py-1 text-[10px] font-black text-emerald-100 backdrop-blur ${
+            card.status === "For Trade" ? "right-2 top-9" : "right-2 top-2"
+          }`}>
             {formatMoney(value)}
           </div>
         ) : null}
@@ -3574,22 +3612,56 @@ function CardTile({
         className={
           mode === "Showcase"
             ? "min-w-0 rounded-xl border border-white/10 bg-black/25 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
-            : "mt-3 flex flex-1 flex-col"
+            : "flex flex-1 flex-col px-1 pt-3"
         }
       >
         <div className="min-w-0">
-          <p className={`${mode === "Showcase" ? "text-2xl" : "text-[15px]"} font-black leading-tight text-white`}>
+          <p className={`${mode === "Showcase" ? "text-3xl" : "truncate text-sm"} font-black leading-tight text-white`}>
             {card.player}
           </p>
-          <p className={`${mode === "Showcase" ? "mt-2 text-sm" : "mt-1 text-xs"} leading-5 text-sky-200/80`}>
-            {card.team}
+          <p className={`${mode === "Showcase" ? "mt-2 text-sm" : "mt-1 truncate text-xs"} font-bold leading-5 text-slate-400`}>
+            {card.year} {card.brand}
           </p>
         </div>
-          <p className={`${mode === "Showcase" ? "mt-5 text-base leading-7" : "mt-3 text-xs leading-5"} line-clamp-2 font-bold text-slate-100`}>
+        <p className={`${mode === "Showcase" ? "mt-5 text-base leading-7" : "mt-2 line-clamp-2 text-xs leading-5"} font-bold text-slate-100`}>
           {cardSubtitle(card)}
         </p>
+        {mode === "Showcase" && card.notes ? (
+          <p className="mt-4 line-clamp-3 text-sm font-bold leading-6 text-slate-300">{card.notes}</p>
+        ) : null}
         <div className="mt-auto pt-3">
-          {card.tags?.length ? <TagRow tags={card.tags} compact /> : null}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {isDisplayGrade(card.grade) ? (
+              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black text-slate-200">
+                {card.grade}
+              </span>
+            ) : null}
+            {visibleTags.slice(0, 3).map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black text-slate-300"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <span className="text-sm font-black text-emerald-300">
+              {showMoney && value ? formatMoney(value) : ""}
+            </span>
+            <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+              <span
+                className={`size-2 rounded-full ${
+                  card.status === "For Trade"
+                    ? "bg-[#ff5533]"
+                    : card.status === "Wishlist"
+                      ? "bg-amber-500"
+                      : "bg-emerald-500"
+                }`}
+              />
+              {card.status}
+            </span>
+          </div>
         </div>
       </div>
     </button>
@@ -3752,6 +3824,18 @@ function tileBorderClass(borderStyle: BorderStyle) {
   return "border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.06),rgba(15,23,42,0.92))] shadow-[0_18px_38px_rgba(0,0,0,0.32)]";
 }
 
+function tileBorderAccentClass(borderStyle: BorderStyle) {
+  if (borderStyle === "Chrome") {
+    return "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_18px_38px_rgba(0,0,0,0.34)]";
+  }
+
+  if (borderStyle === "Glow") {
+    return "shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_0_30px_rgba(255,85,51,0.15),0_18px_38px_rgba(0,0,0,0.36)]";
+  }
+
+  return "";
+}
+
 function previewBorderClass(borderStyle: BorderStyle) {
   if (borderStyle === "Chrome") {
     return "border border-white/25 bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_38px_rgba(0,0,0,0.32)]";
@@ -3870,6 +3954,10 @@ function sanitizeTags(tags: CardTag[] | undefined) {
   return (tags ?? []).filter((tag): tag is CardTag =>
     cardTags.includes(tag as CardTag),
   );
+}
+
+function isPremiumCard(card: Card) {
+  return card.isChase || card.tags?.includes("Favorite");
 }
 
 function moneyValue(value?: string) {
