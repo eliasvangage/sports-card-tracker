@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 type SoldCompsCard = {
   brand?: string;
+  cardNumber?: string;
   grade?: string;
   parallel?: string;
   player?: string;
@@ -14,6 +15,8 @@ type SoldCompsCard = {
 type SoldComp = {
   condition: string;
   endDate: string;
+  matchReasons?: string[];
+  matchScore?: number;
   price: number;
   title: string;
   url: string;
@@ -26,7 +29,9 @@ type SoldCompsResponse = {
   samples: number;
   comps: SoldComp[];
   dataSource?: "sold" | "active";
+  minMatchScore?: number;
   query: string;
+  rejected?: number;
 };
 
 export function SoldComps({
@@ -47,6 +52,7 @@ export function SoldComps({
 
     for (const [key, value] of Object.entries({
       brand: card.brand,
+      cardNumber: card.cardNumber,
       grade: card.grade && card.grade !== "Raw" ? card.grade : "",
       parallel: card.parallel,
       player: card.player,
@@ -57,7 +63,7 @@ export function SoldComps({
     }
 
     return params.toString();
-  }, [card.brand, card.grade, card.parallel, card.player, card.set, card.year]);
+  }, [card.brand, card.cardNumber, card.grade, card.parallel, card.player, card.set, card.year]);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,8 +120,8 @@ export function SoldComps({
           </h4>
           <p className="mt-1 text-xs font-bold text-slate-500">
             {data?.dataSource === "sold"
-              ? "Completed eBay sales with outliers trimmed."
-              : "Active listing signal while sold data is unavailable."}
+              ? "Completed eBay sales filtered by match strength."
+              : "Active listings filtered by match strength."}
           </p>
         </div>
         {data?.query ? (
@@ -171,8 +177,11 @@ export function SoldComps({
               <span className="truncate text-[11px] font-bold text-slate-300">
                 {comp.title}
               </span>
-              <span className="text-xs font-black text-emerald-200">
+              <span className="text-right text-xs font-black text-emerald-200">
                 {formatMoney(comp.price)}
+                <span className="block text-[9px] text-slate-500">
+                  {comp.matchScore ?? 0}%
+                </span>
               </span>
             </a>
           ))}
@@ -194,6 +203,9 @@ export function SoldComps({
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 p-2.5">
             <p className="text-xs font-bold text-slate-400">
               {data.samples} {data.dataSource === "sold" ? "sold eBay comps" : "recent eBay listings"}
+              {typeof data.rejected === "number" && data.rejected > 0
+                ? ` / ${data.rejected} filtered out`
+                : ""}
             </p>
             <button
               type="button"
@@ -217,7 +229,8 @@ export function SoldComps({
                     {comp.title}
                   </p>
                   <p className="mt-1 truncate text-[10px] font-bold text-slate-500">
-                    {comp.condition || "Condition not listed"}
+                    {comp.matchScore ?? 0}% match
+                    {comp.matchReasons?.length ? ` / ${comp.matchReasons.join(", ")}` : ""}
                   </p>
                 </div>
                 <span className="text-sm font-black text-emerald-200">

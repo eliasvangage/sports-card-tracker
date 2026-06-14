@@ -294,17 +294,43 @@ function marketplaceFromUrl(value: string) {
 }
 
 function setFromTitle(title: string) {
-  const sets = ["Chrome", "Prizm", "Optic", "Select", "Mosaic", "Heritage", "Stadium Club", "Finest"];
-  return sets.filter((set) => title.toLowerCase().includes(set.toLowerCase())).join(" ");
+  const sets = [
+    "Bowman Chrome",
+    "Topps Chrome",
+    "Stadium Club",
+    "Upper Deck",
+    "National Treasures",
+    "SP Authentic",
+    "Young Guns",
+    "Series 1",
+    "Series 2",
+    "Chrome",
+    "Prizm",
+    "Optic",
+    "Select",
+    "Mosaic",
+    "Heritage",
+    "Finest",
+  ];
+  return sets
+    .filter((set) => new RegExp(`\\b${escapeRegExp(set).replaceAll("\\ ", "\\s+")}\\b`, "i").test(title))
+    .slice(0, 3)
+    .join(" ");
 }
 
 function normalizeTeam(aspectTeam: string, title: string) {
   const titleTeam = teamFromText(title);
   if (titleTeam) return titleTeam;
 
-  if (!aspectTeam.includes(",")) return aspectTeam || teamFromText(aspectTeam);
+  if (!/[;,/|]/.test(aspectTeam)) return teamFromText(aspectTeam) || aspectTeam;
 
-  return teamFromText(aspectTeam) || aspectTeam.split(",")[0]?.trim() || "";
+  const candidates = aspectTeam
+    .split(/[;,/|]/)
+    .map((team) => team.trim())
+    .filter(Boolean);
+  const exactTeam = candidates.map((team) => teamFromText(team)).find(Boolean);
+
+  return exactTeam || candidates[0] || "";
 }
 
 function parseTitle(title: string) {
@@ -366,7 +392,7 @@ function parseTitle(title: string) {
   ];
   const printRun = title.match(/\/(\d{2,4})\b/)?.[0] ?? "";
   const parallel = [
-    parallelKeywords.find((keyword) => upper.includes(keyword)) ?? "",
+    parallelKeywords.find((keyword) => keywordInTitle(upper, keyword)) ?? "",
     printRun,
   ]
     .filter(Boolean)
@@ -413,6 +439,19 @@ function parseTitle(title: string) {
     team: teamFromText(title),
     year,
   };
+}
+
+function keywordInTitle(upperTitle: string, keyword: string) {
+  const pattern = keyword
+    .split(/\s+/)
+    .map((part) => escapeRegExp(part))
+    .join("\\s+");
+
+  return new RegExp(`\\b${pattern}\\b`).test(upperTitle);
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function titleCase(value: string) {

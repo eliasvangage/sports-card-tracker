@@ -411,31 +411,30 @@ export default function UploadPage() {
           </div>
         </div>
 
-        <section className="relative mt-5 overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_18%_0%,rgba(255,85,51,0.13),transparent_30%),radial-gradient(circle_at_82%_0%,rgba(56,189,248,0.10),transparent_28%),linear-gradient(135deg,rgba(21,27,38,0.96),rgba(10,14,20,0.96))] p-4 shadow-2xl">
-          <div className="absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#ff5533,#f8e71c,#20e3b2,#38bdf8,#ec4899)]" />
+        <section className="relative mt-5 overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_18%_0%,rgba(255,85,51,0.13),transparent_30%),linear-gradient(135deg,rgba(21,27,38,0.96),rgba(10,14,20,0.96))] p-4 shadow-2xl">
+          <div className="absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#ff5533,#20e3b2,#38bdf8)]" />
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_440px]">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-[#ffb84d]">
                 CardRoster intake
               </p>
               <h1 className="mt-2 max-w-3xl text-4xl font-black leading-tight tracking-normal sm:text-5xl">
-                Add cards without typing.
+                Capture, verify, save.
               </h1>
               <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-300">
-                Scan a card, paste an eBay listing, or batch drop photos. Every
-                source lands in one review queue with identity, crop, and market
-                checks before it touches your vault.
+                Scan a card or paste an eBay listing. Every draft lands in one
+                review queue with editable identity, crop, duplicate checks, and
+                stricter market matches before it touches your vault.
               </p>
               <div className="mt-5 flex flex-wrap gap-2">
                 {[
-                  `${drafts.length} drafts`,
-                  "OCR scan",
-                  "eBay import",
-                  "Comps panel",
+                  `${drafts.length} draft${drafts.length === 1 ? "" : "s"}`,
+                  "Strict comps",
+                  "Editable review",
                 ].map((item) => (
                   <span
                     key={item}
-                    className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-xs font-black text-slate-300"
+                    className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-xs font-black text-slate-200"
                   >
                     {item}
                   </span>
@@ -447,10 +446,6 @@ export default function UploadPage() {
               <div className="rounded-xl border border-white/10 bg-black/25 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#ffb84d]">
                   eBay listing import
-                </p>
-                <p className="mt-1 text-xs font-bold leading-5 text-slate-400">
-                  Best for one-click image, title, aspects, listing price, and
-                  source tracking.
                 </p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
                   <input
@@ -480,11 +475,10 @@ export default function UploadPage() {
                 </span>
                 <span className="min-w-0">
                   <span className="block text-sm font-black text-white">
-                    Batch drop photos
+                    Batch photos
                   </span>
                   <span className="mt-1 block text-xs font-bold leading-5 text-slate-400">
-                    Use when you want several drafts at once. Scanner is better
-                    for accurate one-card intake.
+                    Drop several photos, then confirm identity and value below.
                   </span>
                 </span>
                 <input
@@ -530,7 +524,7 @@ export default function UploadPage() {
               <p className="text-xs font-black uppercase tracking-[0.2em] text-[#ffb84d]">
                 Review queue
               </p>
-              <h2 className="text-2xl font-black">Confirm before save</h2>
+              <h2 className="text-2xl font-black">Confirm cards</h2>
             </div>
             <div className="flex items-center gap-3">
               <p className="text-xs font-bold text-slate-400">
@@ -550,8 +544,8 @@ export default function UploadPage() {
             <div className="rounded-2xl border border-dashed border-white/10 bg-[linear-gradient(135deg,rgba(21,27,38,0.72),rgba(10,14,20,0.92))] p-8 text-center shadow-xl">
               <p className="text-lg font-black text-white">No drafts yet.</p>
               <p className="mx-auto mt-2 max-w-xl text-sm font-bold leading-6 text-slate-400">
-                Scan a card, paste an eBay listing, or batch drop photos. Your
-                review queue will appear here with comps and confidence checks.
+                Scan a card, paste an eBay listing, or batch drop photos. Drafts
+                appear here with image crop, identity checks, and matched comps.
               </p>
             </div>
           ) : (
@@ -1272,7 +1266,7 @@ function tagGuesses(value: string) {
   if (/\b(rookie| rc |rc)\b/.test(lower)) tags.push("Rookie");
   if (/\b(auto|autograph)\b/.test(lower)) tags.push("Auto");
   if (/\b(patch|relic|jersey)\b/.test(lower)) tags.push("Patch");
-  if (/(?:^|\s)\/\d{2,4}\b|\b(serial numbered|numbered|print run)\b/.test(lower)) {
+  if (/(?:^|\s)\/\d{2,4}\b/.test(lower)) {
     tags.push("Numbered");
   }
 
@@ -1575,18 +1569,29 @@ function teamFromTitle(title: string) {
 
 function setFromTitle(title: string) {
   const matches = [
+    "Bowman Chrome",
+    "Topps Chrome",
+    "Stadium Club",
+    "Upper Deck",
+    "National Treasures",
+    "SP Authentic",
+    "Young Guns",
+    "Series 1",
+    "Series 2",
     "Chrome",
     "Prizm",
     "Optic",
     "Select",
     "Mosaic",
-    "Refractor",
-    "Holo",
-    "Rookie",
+    "Heritage",
+    "Finest",
     "Base Set",
   ];
 
-  return matches.filter((match) => title.toLowerCase().includes(match.toLowerCase())).join(" ");
+  return matches
+    .filter((match) => title.toLowerCase().includes(match.toLowerCase()))
+    .slice(0, 3)
+    .join(" ");
 }
 
 function gradeFromTitle(title: string) {

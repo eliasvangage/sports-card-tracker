@@ -65,13 +65,13 @@ export function CardScanner({
 
   return (
     <section
-      className={`overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_18%_0%,rgba(255,85,51,0.13),transparent_30%),linear-gradient(135deg,rgba(21,27,36,0.98),rgba(8,12,18,0.98))] p-4 shadow-2xl ${
+      className={`overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(135deg,rgba(21,27,36,0.98),rgba(8,12,18,0.98))] p-4 shadow-2xl ${
         isScanning ? "animate-pulse" : ""
       }`}
     >
-      <div className="grid gap-4 lg:grid-cols-[310px_minmax(0,1fr)]">
-        <label className="group relative flex min-h-[285px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed border-white/20 bg-black/30 p-4 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition hover:-translate-y-0.5 hover:border-white/35 hover:bg-white/[0.06]">
-          <div className="absolute inset-x-6 top-5 h-1 rounded-full bg-[linear-gradient(90deg,#ff5533,#f8e71c,#20e3b2,#38bdf8)] opacity-80" />
+      <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <label className="group relative flex min-h-[250px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed border-white/20 bg-black/30 p-4 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition hover:-translate-y-0.5 hover:border-white/35 hover:bg-white/[0.06]">
+          <div className="absolute inset-x-6 top-5 h-1 rounded-full bg-[linear-gradient(90deg,#ff5533,#20e3b2,#38bdf8)] opacity-80" />
           {imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -95,10 +95,10 @@ export function CardScanner({
               +
             </div>
             <p className="mt-4 text-lg font-black text-white">
-              Scan card front
+              Add a card image
             </p>
             <p className="mx-auto mt-2 max-w-xs text-xs font-bold leading-5 text-slate-400">
-              Camera or image upload. A review draft appears below.
+              Camera or upload. A review draft appears below.
             </p>
           </div>
           <input
@@ -116,16 +116,15 @@ export function CardScanner({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-                  Card scanner
+                  Image identification
                 </p>
                 <h2 className="mt-2 text-2xl font-black leading-tight text-white">
-                  Scanner
+                  Scan, then verify.
                 </h2>
               </div>
             </div>
             <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-slate-300">
-              Pulls readable text into editable fields. Confidence badges only
-              appear after a scan.
+              OCR suggestions fill the draft, but the review queue stays in control.
             </p>
 
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -148,15 +147,7 @@ export function CardScanner({
               disabled={isScanning}
               className="h-10 rounded-lg bg-[#ff5533] px-4 text-sm font-black text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isScanning ? "Scanning..." : "Scan card"}
-            </button>
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              disabled={isScanning}
-              className="h-10 rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Upload image
+              {isScanning ? "Scanning..." : "Choose image"}
             </button>
             <button
               type="button"

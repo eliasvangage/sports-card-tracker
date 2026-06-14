@@ -436,6 +436,31 @@ export default function Home() {
             </Link>
           </nav>
         </div>
+        <nav className="no-scrollbar flex gap-2 overflow-x-auto border-t border-white/5 px-4 py-2 text-xs font-black text-slate-300 md:hidden">
+          {[...appSections, "Upload"].map((section) =>
+            section === "Upload" ? (
+              <Link
+                key={section}
+                href="/upload"
+                className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1.5"
+              >
+                Upload
+              </Link>
+            ) : (
+              <button
+                key={section}
+                onClick={() => setActiveSection(section as AppSection)}
+                className={`shrink-0 rounded-full border px-3 py-1.5 ${
+                  activeSection === section
+                    ? "border-white/20 bg-white text-[#111722]"
+                    : "border-white/10 bg-white/5"
+                }`}
+              >
+                {section}
+              </button>
+            ),
+          )}
+        </nav>
       </header>
 
       {activeSection === "Home" ? (
@@ -821,6 +846,7 @@ export default function Home() {
                   frameStyle={card.frameStyle ?? frameStyle}
                   mode={displayMode}
                   selected={selectedCard?.id === card.id}
+                  showMoney={showMoney}
                   onClick={() => setSelectedId(card.id)}
                   onDoubleClick={() => setDetailId(card.id)}
                 />
@@ -829,45 +855,52 @@ export default function Home() {
           )}
         </section>
 
-        <aside className={`h-fit rounded-lg border border-white/10 ${activeTheme.panel} p-3 shadow-xl lg:sticky lg:top-20`}>
+        <aside className={`h-fit rounded-xl border border-white/10 ${activeTheme.panel} p-3 shadow-xl lg:sticky lg:top-20`}>
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-black uppercase tracking-[0.2em] text-white/55">
               Card studio
             </p>
             {selectedCard ? (
               <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
-                Editing
+                Live edit
               </span>
             ) : null}
           </div>
           {selectedCard ? (
             <>
-              <div className="mt-4 h-[260px] rounded-xl border border-white/10 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.08),transparent_44%),rgba(0,0,0,0.2)] p-3">
-                <CardPreview
-                  key={`${selectedCard.id}-${selectedCard.imageX ?? 50}-${selectedCard.imageY ?? 50}-${selectedCard.imageZoom ?? 100}-${selectedCard.imageRotation ?? 0}`}
-                  card={selectedCard}
-                  accent={activeTheme.accent}
-                  borderStyle={borderStyle}
-                  frameStyle={selectedCard.frameStyle ?? frameStyle}
-                  large
-                />
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <button onClick={() => setGrailId(selectedCard.id)} className="h-9 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
-                  Grail
+              <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.015))] shadow-[0_18px_45px_rgba(0,0,0,0.32)]">
+                <button
+                  onClick={() => setDetailId(selectedCard.id)}
+                  className="block w-full p-3 text-left"
+                >
+                  <div className="h-[250px] rounded-xl bg-black/20 p-3">
+                    <CardPreview
+                      key={`${selectedCard.id}-${selectedCard.imageX ?? 50}-${selectedCard.imageY ?? 50}-${selectedCard.imageZoom ?? 100}-${selectedCard.imageRotation ?? 0}`}
+                      card={selectedCard}
+                      accent={activeTheme.accent}
+                      borderStyle={borderStyle}
+                      frameStyle={selectedCard.frameStyle ?? frameStyle}
+                      imageFit="contain"
+                      large
+                    />
+                  </div>
+                  <div className="mt-3 min-w-0">
+                    <p className="truncate text-lg font-black text-white">{selectedCard.player}</p>
+                    <p className="mt-1 truncate text-xs font-bold text-slate-400">
+                      {[selectedCard.year, selectedCard.brand, selectedCard.set, selectedCard.cardNumber ? `#${selectedCard.cardNumber}` : ""]
+                        .filter(Boolean)
+                        .join(" ")}
+                    </p>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <MiniStat
+                      label="Value"
+                      value={showMoney ? formatMoney(cardValue(selectedCard)) : "Private"}
+                    />
+                    <MiniStat label="Grade" value={selectedCard.grade || "Raw"} />
+                    <MiniStat label="Status" value={selectedCard.status} />
+                  </div>
                 </button>
-                <button onClick={() => setDetailId(selectedCard.id)} className="h-9 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
-                  View
-                </button>
-                {selectedCard.sourceUrl ? (
-                  <a href={selectedCard.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
-                    Source
-                  </a>
-                ) : (
-                  <button disabled className="h-9 rounded-md border border-white/10 bg-white/[0.03] text-xs font-black text-slate-600">
-                    Source
-                  </button>
-                )}
               </div>
               <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
                 <div className="mb-3 grid grid-cols-3 gap-1 rounded-lg border border-white/10 bg-black/25 p-1">
@@ -1059,9 +1092,23 @@ export default function Home() {
                   )
                 ) : null}
               </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button onClick={() => setGrailId(selectedCard.id)} className="h-9 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                  Feature
+                </button>
+                {selectedCard.sourceUrl ? (
+                  <a href={selectedCard.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                    Source
+                  </a>
+                ) : (
+                  <button disabled className="h-9 rounded-md border border-white/10 bg-white/[0.03] text-xs font-black text-slate-600">
+                    Source
+                  </button>
+                )}
+              </div>
               <button
                 onClick={() => deleteCard(selectedCard.id)}
-                className="mt-4 h-10 w-full rounded-md border border-red-400/20 bg-red-500/10 text-sm font-bold text-red-200 hover:bg-red-500/20"
+                className="mt-3 h-9 w-full rounded-md border border-red-400/20 bg-red-500/10 text-xs font-bold text-red-200 hover:bg-red-500/20"
               >
                 Delete card
               </button>
@@ -2729,13 +2776,15 @@ function CardDetailModal({
   showMoney: boolean;
 }) {
   if (!card) return null;
+  const value = cardValue(card);
+  const gain = value - moneyValue(card.purchasePrice);
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-[#05070b]/96 p-4 backdrop-blur-2xl">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_25%_18%,rgba(255,255,255,0.08),transparent_24%),linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:auto,52px_52px,52px_52px]" />
-      <div className="relative mx-auto grid min-h-full max-w-7xl gap-5 py-6 lg:grid-cols-[minmax(340px,430px)_minmax(0,1fr)] lg:items-center">
+      <div className="relative mx-auto grid min-h-full max-w-7xl gap-5 py-6 lg:grid-cols-[minmax(320px,470px)_minmax(0,1fr)] lg:items-center">
         <div className="rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.12),transparent_42%),rgba(255,255,255,0.035)] p-4 shadow-[0_30px_90px_rgba(0,0,0,0.55)] sm:p-5">
-          <div className="mx-auto h-[min(70vh,620px)] max-h-[620px] max-w-[390px]">
+          <div className="mx-auto h-[min(72vh,680px)] max-h-[680px] max-w-[420px]">
             <CardPreview
               card={card}
               accent={accent}
@@ -2751,7 +2800,7 @@ function CardDetailModal({
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-                Collector placard
+                {card.collection}
               </p>
               <h2 className="mt-2 text-4xl font-black leading-[1.05] text-white sm:text-5xl">
                 {card.player}
@@ -2765,11 +2814,13 @@ function CardDetailModal({
               Close
             </button>
           </div>
-          <p className="mt-6 max-w-3xl text-xl font-black leading-8 text-white">
-            {card.year} {card.brand} {card.set}
+          <p className="mt-5 max-w-3xl text-xl font-black leading-8 text-white">
+            {[card.year, card.brand, card.set, card.cardNumber ? `#${card.cardNumber}` : "", card.parallel]
+              .filter(Boolean)
+              .join(" ")}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-[#111722]">
+            <span className="rounded-full border border-white/20 bg-white px-3 py-1 text-xs font-black text-[#111722]">
               {card.status}
             </span>
             {card.grade && card.grade !== "Raw" ? (
@@ -2781,6 +2832,26 @@ function CardDetailModal({
               {card.collection}
             </span>
           </div>
+          {showMoney ? (
+            <div className="mt-5 rounded-2xl border border-white/10 bg-black/25 p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                Market value
+              </p>
+              <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
+                <p className="text-4xl font-black text-white">{formatMoney(value)}</p>
+                <p className={`text-sm font-black ${gain >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                  {moneyValue(card.purchasePrice)
+                    ? `${gain >= 0 ? "+" : ""}${formatMoney(gain)} vs cost`
+                    : "Add cost to track gain"}
+                </p>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <Detail label="Cost" value={formatMoney(moneyValue(card.purchasePrice))} />
+                <Detail label="Sale" value={card.saleStatus ?? "Holding"} />
+                <Detail label="Sold" value={formatMoney(moneyValue(card.salePrice))} />
+              </div>
+            </div>
+          ) : null}
           {card.notes ? (
             <p className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4 text-sm font-bold leading-6 text-slate-300">
               {card.notes}
@@ -2790,13 +2861,6 @@ function CardDetailModal({
             <Detail label="Sport" value={card.sport} />
             <Detail label="Year" value={card.year} />
             <Detail label="Brand" value={card.brand} />
-            {showMoney ? (
-              <>
-                <Detail label="Value" value={formatMoney(cardValue(card))} />
-                <Detail label="Cost" value={formatMoney(moneyValue(card.purchasePrice))} />
-                <Detail label="Sale" value={card.saleStatus ?? "Holding"} />
-              </>
-            ) : null}
           </div>
           {card.tags?.length ? <TagRow tags={card.tags} /> : null}
           <div className="mt-6 flex flex-wrap gap-2">
@@ -3408,6 +3472,7 @@ function CardTile({
   onClick,
   onDoubleClick,
   selected,
+  showMoney,
 }: {
   accent: string;
   borderStyle: BorderStyle;
@@ -3417,7 +3482,10 @@ function CardTile({
   onClick: () => void;
   onDoubleClick: () => void;
   selected: boolean;
+  showMoney: boolean;
 }) {
+  const value = cardValue(card);
+
   if (mode === "Compact") {
     return (
       <button
@@ -3438,6 +3506,12 @@ function CardTile({
             </p>
           </div>
         </div>
+        <div className="hidden text-right sm:block">
+          <p className="text-xs font-black text-white">
+            {showMoney && value ? formatMoney(value) : card.status}
+          </p>
+          <p className="mt-0.5 text-[10px] font-bold text-slate-500">{card.collection}</p>
+        </div>
       </button>
     );
   }
@@ -3454,7 +3528,22 @@ function CardTile({
           : "flex flex-col"
       }`}
     >
-      <div className={mode === "Showcase" ? "h-[320px]" : "h-[220px]"}>
+      <div className={`relative ${mode === "Showcase" ? "h-[320px]" : "h-[230px]"}`}>
+        <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-wrap gap-1.5">
+          <span className="rounded-full border border-white/10 bg-black/60 px-2 py-1 text-[10px] font-black text-white backdrop-blur">
+            {card.status}
+          </span>
+          {card.grade && card.grade !== "Raw" ? (
+            <span className="rounded-full border border-white/10 bg-black/60 px-2 py-1 text-[10px] font-black text-slate-200 backdrop-blur">
+              {card.grade}
+            </span>
+          ) : null}
+        </div>
+        {showMoney && value ? (
+          <div className="pointer-events-none absolute right-2 top-2 z-10 rounded-full border border-emerald-300/20 bg-emerald-300/15 px-2 py-1 text-[10px] font-black text-emerald-100 backdrop-blur">
+            {formatMoney(value)}
+          </div>
+        ) : null}
         <CardPreview
           key={`${card.id}-${card.imageX ?? 50}-${card.imageY ?? 50}-${card.imageZoom ?? 100}-${card.imageRotation ?? 0}`}
           card={card}
@@ -3479,13 +3568,14 @@ function CardTile({
             {card.team}
           </p>
         </div>
-        <p className={`${mode === "Showcase" ? "mt-5 text-base leading-7" : "mt-3 text-xs leading-5"} font-bold text-slate-100`}>
-          {card.year} {card.brand} {card.set}
+        <p className={`${mode === "Showcase" ? "mt-5 text-base leading-7" : "mt-3 text-xs leading-5"} line-clamp-2 font-bold text-slate-100`}>
+          {[card.year, card.brand, card.set, card.cardNumber ? `#${card.cardNumber}` : ""]
+            .filter(Boolean)
+            .join(" ")}
         </p>
-        {card.grade && card.grade !== "Raw" ? (
-          <p className="mt-1 text-xs font-bold text-slate-500">{card.grade}</p>
-        ) : null}
-        {card.tags?.length ? <TagRow tags={card.tags} /> : null}
+        <div className="mt-auto pt-3">
+          {card.tags?.length ? <TagRow tags={card.tags} compact /> : null}
+        </div>
       </div>
     </button>
   );
@@ -3841,13 +3931,15 @@ function Detail({ label, value }: { label: string; value: string }) {
   );
 }
 
-function TagRow({ tags }: { tags: CardTag[] }) {
+function TagRow({ compact = false, tags }: { compact?: boolean; tags: CardTag[] }) {
   return (
-    <div className="mt-3 flex flex-wrap gap-1.5">
+    <div className={`${compact ? "mt-0" : "mt-3"} flex flex-wrap gap-1.5`}>
       {tags.slice(0, 4).map((tag) => (
         <span
           key={tag}
-          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black text-slate-300"
+          className={`rounded-full border border-white/10 bg-white/5 font-black text-slate-300 ${
+            compact ? "px-1.5 py-0.5 text-[9px]" : "px-2 py-1 text-[10px]"
+          }`}
         >
           {tag}
         </span>
