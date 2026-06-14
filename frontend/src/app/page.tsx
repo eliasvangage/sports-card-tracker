@@ -72,6 +72,7 @@ type CollectorProfile = {
 const cardTags: CardTag[] = ["Rookie", "Auto", "Patch", "Numbered", "Favorite"];
 const appSections: AppSection[] = ["Home", "Collection", "Feed", "Profile"];
 const utilitySections: AppSection[] = ["Insights", "Trade", "Tools", "Wishlist"];
+const accentPalette = ["#ff5533", "#38bdf8", "#20e3b2", "#f59e0b", "#ef3f6b", "#d7b46a"];
 
 const themes: Record<ThemeName, { bg: string; panel: string; accent: string }> = {
   Arena: {
@@ -709,9 +710,9 @@ export default function Home() {
           </RailSection>
 
           <RailSection title="Look">
-            <details className="group rounded-lg border border-white/10 bg-black/15 p-2">
+            <details className="group rounded-lg border border-white/10 bg-[linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-2" open>
               <summary className="cursor-pointer list-none text-sm font-black text-sky-100 group-open:text-white">
-                Appearance
+                Customization
               </summary>
               <div className="mt-3 grid gap-2">
                 <FilterSelect
@@ -732,6 +733,20 @@ export default function Home() {
                   onChange={(value) => setBorderStyle(value as BorderStyle)}
                   options={["Soft", "Chrome", "Glow"]}
                 />
+                <div className="rounded-lg border border-white/10 bg-black/20 p-2">
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                    Accent
+                  </p>
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {accentPalette.map((color) => (
+                      <span
+                        key={color}
+                        className="h-6 rounded-md border border-white/15"
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
             </details>
           </RailSection>
@@ -785,7 +800,7 @@ export default function Home() {
             </div>
           ) : null}
 
-          <div className="mb-3 flex flex-col justify-between gap-3 rounded-lg border border-white/10 bg-[#151b26]/70 p-3 sm:flex-row sm:items-center">
+          <div className="mb-3 flex flex-col justify-between gap-3 rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(21,27,38,0.92),rgba(8,12,18,0.92))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:flex-row sm:items-center">
             <div>
               <p className="text-[11px] font-black uppercase tracking-[0.22em] text-white/55">
                 Gallery
@@ -811,9 +826,9 @@ export default function Home() {
                 <button
                   key={mode}
                   onClick={() => setDisplayMode(mode)}
-                  className={`h-9 rounded-md px-3 text-xs font-black transition ${
+                  className={`h-9 rounded-lg px-3 text-xs font-black transition ${
                     displayMode === mode
-                      ? "bg-white text-[#111722]"
+                      ? "bg-white text-[#111722] shadow-[0_8px_22px_rgba(255,255,255,0.12)]"
                       : "border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
                   }`}
                 >
@@ -1008,6 +1023,10 @@ export default function Home() {
                     <EditField label="Frame color">
                       <input value={selectedCard.color} onChange={(event) => updateCard(selectedCard.id, { color: event.target.value })} className="studio-field" type="color" />
                     </EditField>
+                    <ColorSwatches
+                      activeColor={selectedCard.color}
+                      onChange={(color) => updateCard(selectedCard.id, { color })}
+                    />
                     <EditField label="Tags">
                       <div className="flex flex-wrap gap-2">
                         {cardTags.map((tag) => {
@@ -3955,6 +3974,40 @@ function TagRow({ compact = false, tags }: { compact?: boolean; tags: CardTag[] 
           {tag}
         </span>
       ))}
+    </div>
+  );
+}
+
+function ColorSwatches({
+  activeColor,
+  onChange,
+}: {
+  activeColor: string;
+  onChange: (color: string) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+        Quick colors
+      </p>
+      <div className="grid grid-cols-6 gap-2">
+        {accentPalette.map((color) => {
+          const active = color.toLowerCase() === activeColor.toLowerCase();
+
+          return (
+            <button
+              key={color}
+              type="button"
+              onClick={() => onChange(color)}
+              aria-label={`Use ${color}`}
+              className={`h-8 rounded-md border transition ${
+                active ? "border-white shadow-[0_0_0_2px_rgba(255,255,255,0.18)]" : "border-white/15"
+              }`}
+              style={{ backgroundColor: color }}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -776,6 +776,29 @@ export default function UploadPage() {
                         </select>
                       </Field>
 
+                      <Field label="Color">
+                        <div className="grid grid-cols-6 gap-1.5">
+                          {colors.map((color) => {
+                            const active = draft.color.toLowerCase() === color.toLowerCase();
+
+                            return (
+                              <button
+                                key={color}
+                                type="button"
+                                onClick={() => updateDraft(draft.id, "color", color)}
+                                aria-label={`Use ${color}`}
+                                className={`h-8 rounded-md border transition ${
+                                  active
+                                    ? "border-white shadow-[0_0_0_2px_rgba(255,255,255,0.18)]"
+                                    : "border-white/15"
+                                }`}
+                                style={{ backgroundColor: color }}
+                              />
+                            );
+                          })}
+                        </div>
+                      </Field>
+
                       <Field label="Status">
                         <select
                           value={draft.status}

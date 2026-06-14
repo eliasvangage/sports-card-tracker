@@ -4,6 +4,9 @@ import { checkRateLimit, requestIdentifier } from "@/lib/rate-limit";
 
 type EbayCompItem = {
   condition?: string;
+  image?: {
+    imageUrl?: string;
+  };
   itemEndDate?: string;
   itemWebUrl?: string;
   price?: {
@@ -25,6 +28,7 @@ type CompResult = {
 };
 
 const allowedParams = ["player", "year", "brand", "set", "parallel", "grade", "cardNumber"] as const;
+const completedEntriesPerPage = "40";
 
 export async function GET(request: Request) {
   const rateLimit = checkRateLimit({
@@ -57,10 +61,15 @@ export async function GET(request: Request) {
   let dataSource = "sold";
 
   try {
-    const soldResults = await findCompletedComps(query);
+    const soldResults = await findCompletedComps(fields);
     const includeActiveFallback = searchParams.get("includeActive") === "1";
-    comps = soldResults ?? (includeActiveFallback ? await findActiveComps(query) : []);
-    dataSource = soldResults ? "sold" : includeActiveFallback ? "active" : "sold";
+    const hasSoldResults = Array.isArray(soldResults) && soldResults.length > 0;
+    comps = hasSoldResults
+      ? soldResults
+      : includeActiveFallback
+        ? (await findActiveComps(query)) ?? soldResults
+        : soldResults;
+    dataSource = hasSoldResults ? "sold" : includeActiveFallback && comps?.length ? "active" : "sold";
   } catch (error) {
     return NextResponse.json(
       {
@@ -92,7 +101,7 @@ export async function GET(request: Request) {
     rejected: Math.max(0, comps.length - matchedComps.length),
     samples: filteredComps.length,
     totalFound: comps.length,
-    outliersTrimmed: Math.max(0, comps.length - filteredComps.length),
+    outliersTrimmed: Math.max(0, matchedComps.length - filteredComps.length),
     comps: filteredComps.slice(0, 5),
     dataSource,
     query,
@@ -111,10 +120,11 @@ function buildCompQuery(fields: Record<(typeof allowedParams)[number], string>) 
   return [
     fields.year,
     fields.brand,
+    compactSet(fields.set),
     fields.player,
     fields.cardNumber,
-    fields.grade,
-    fields.parallel.split(" ")[0],
+    significantParallel(fields.parallel),
+    fields.grade && fields.grade !== "Raw" ? fields.grade : "",
   ]
     .filter(Boolean)
     .join(" ")
@@ -123,10 +133,39 @@ function buildCompQuery(fields: Record<(typeof allowedParams)[number], string>) 
     .slice(0, 240);
 }
 
-async function findCompletedComps(query: string): Promise<CompResult[] | null> {
+function buildCompQueries(fields: Record<(typeof allowedParams)[number], string>) {
+  const strict = buildCompQuery(fields);
+  const withoutGrade = [
+    fields.year,
+    fields.brand,
+    compactSet(fields.set),
+    fields.player,
+    fields.cardNumber,
+    significantParallel(fields.parallel),
+  ].filter(Boolean).join(" ");
+  const identity = [
+    fields.year,
+    fields.brand,
+    compactSet(fields.set),
+    fields.player,
+    fields.cardNumber,
+  ].filter(Boolean).join(" ");
+  const broad = [fields.year, fields.brand, fields.player].filter(Boolean).join(" ");
+
+  return Array.from(
+    new Set([strict, withoutGrade, identity, broad].map((item) => item.replace(/\s+/g, " ").trim()).filter(Boolean)),
+  );
+}
+
+async function findCompletedComps(
+  fields: Record<(typeof allowedParams)[number], string>,
+): Promise<CompResult[] | null> {
   const appId = process.env.EBAY_APP_ID || process.env.EBAY_CLIENT_ID;
   if (!appId) return null;
 
+  const allComps = new Map<string, CompResult>();
+
+  for (const query of buildCompQueries(fields)) {
   const response = await fetch(
     `https://svcs.ebay.com/services/search/FindingService/v1?${new URLSearchParams({
       "OPERATION-NAME": "findCompletedItems",
@@ -139,7 +178,7 @@ async function findCompletedComps(query: string): Promise<CompResult[] | null> {
       "itemFilter(1).name": "ListingType",
       "itemFilter(1).value": "AuctionWithBIN,FixedPrice,Auction",
       keywords: query,
-      "paginationInput.entriesPerPage": "20",
+      "paginationInput.entriesPerPage": completedEntriesPerPage,
       sortOrder: "EndTimeSoonest",
     }).toString()}`,
   );
@@ -182,7 +221,14 @@ async function findCompletedComps(query: string): Promise<CompResult[] | null> {
     })
     .filter(isCompResult);
 
-  return comps.length ? comps : null;
+    for (const comp of comps) {
+      allComps.set(`${comp.url}-${comp.price}`, comp);
+    }
+
+    if (allComps.size >= 12) break;
+  }
+
+  return Array.from(allComps.values());
 }
 
 async function findActiveComps(query: string): Promise<CompResult[] | null> {
@@ -228,6 +274,7 @@ function toCompResult(item: EbayCompItem): CompResult | null {
   return {
     condition: item.condition ?? "",
     endDate: item.itemEndDate ?? "",
+    imageUrl: item.image?.imageUrl ?? "",
     price: Math.round(price * 100) / 100,
     title: item.title,
     url: item.itemWebUrl,
@@ -238,7 +285,7 @@ function scoreAndFilterComps(
   comps: CompResult[],
   fields: Record<(typeof allowedParams)[number], string>,
 ) {
-  return comps
+  const scored = comps
     .map((comp) => ({
       ...comp,
       ...scoreCompMatch(comp.title, fields),
@@ -248,6 +295,20 @@ function scoreAndFilterComps(
         (comp.matchScore ?? 0) >= minimumMatchScore(fields) &&
         hasRequiredIdentity(comp.title, fields) &&
         !hasVariantConflict(comp.title, fields),
+    )
+    .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0) || a.price - b.price);
+
+  if (scored.length > 0) return scored;
+
+  return comps
+    .map((comp) => ({
+      ...comp,
+      ...scoreCompMatch(comp.title, fields, true),
+    }))
+    .filter(
+      (comp) =>
+        (comp.matchScore ?? 0) >= relaxedMinimumMatchScore(fields) &&
+        hasCoreIdentity(comp.title, fields),
     )
     .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0) || a.price - b.price);
 }
@@ -264,6 +325,7 @@ function hasRequiredIdentity(
 function scoreCompMatch(
   title: string,
   fields: Record<(typeof allowedParams)[number], string>,
+  relaxed = false,
 ) {
   const normalizedTitle = normalizeForMatch(title);
   const reasons: string[] = [];
@@ -330,6 +392,8 @@ function scoreCompMatch(
     if (number && cardNumberMatches(normalizedTitle, number)) {
       score += 6;
       reasons.push("card #");
+    } else if (relaxed) {
+      possible -= 6;
     }
   }
 
@@ -351,6 +415,21 @@ function scoreCompMatch(
   return { matchReasons: reasons, matchScore };
 }
 
+function hasCoreIdentity(
+  title: string,
+  fields: Record<(typeof allowedParams)[number], string>,
+) {
+  const normalizedTitle = normalizeForMatch(title);
+  const playerTokens = keywordTokens(fields.player);
+  const playerHits = countHits(normalizedTitle, playerTokens);
+  const yearMatches = !fields.year || normalizedTitle.includes(normalizeForMatch(fields.year));
+  const brandTokens = brandMatchTokens(fields.brand);
+  const brandMatches =
+    brandTokens.length === 0 || brandTokens.some((token) => normalizedTitle.includes(token));
+
+  return playerHits >= Math.max(1, playerTokens.length - 1) && yearMatches && brandMatches;
+}
+
 function hasVariantConflict(
   title: string,
   fields: Record<(typeof allowedParams)[number], string>,
@@ -361,7 +440,6 @@ function hasVariantConflict(
   const cardSerial = fields.parallel.match(/\/\s*(\d{2,4})\b/)?.[1] ?? "";
 
   if (titleSerial && cardSerial && titleSerial !== cardSerial) return true;
-  if (titleSerial && !cardSerial) return true;
 
   const titleColors = variantColors.filter((color) =>
     new RegExp(`\\b${color}\\b`).test(normalizedTitle),
@@ -381,6 +459,12 @@ function minimumMatchScore(fields: Record<(typeof allowedParams)[number], string
   if (fields.set) return 68;
 
   return 62;
+}
+
+function relaxedMinimumMatchScore(fields: Record<(typeof allowedParams)[number], string>) {
+  if (fields.grade && fields.grade !== "Raw") return 64;
+  if (fields.cardNumber || fields.parallel) return 60;
+  return 56;
 }
 
 function normalizeForMatch(value: string) {
@@ -425,6 +509,22 @@ function brandMatchTokens(brand: string) {
   };
 
   return aliases[normalized] ?? keywordTokens(brand);
+}
+
+function compactSet(value: string) {
+  const tokens = keywordTokens(value).filter(
+    (token) => !["base", "set", "series"].includes(token),
+  );
+
+  return tokens.slice(0, 2).join(" ");
+}
+
+function significantParallel(value: string) {
+  const tokens = keywordTokens(value).filter(
+    (token) => !["base", "card", "parallel", "refractor", "holo"].includes(token),
+  );
+
+  return tokens[0] ?? "";
 }
 
 function countHits(title: string, tokens: string[]) {
