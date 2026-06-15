@@ -92,15 +92,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const fallbackQuery = buildFallbackQuery(fields);
-    const foundActive = dedupeComps([
-      ...(await findBrowseActiveComps(query)),
-      ...(
-        fallbackQuery && fallbackQuery !== query
-          ? await findBrowseActiveComps(fallbackQuery)
-          : []
-      ),
-    ]);
+    const queries = buildSearchQueries(fields);
+    const foundActive = dedupeComps(
+      (await Promise.all(queries.map((searchQuery) => findBrowseActiveComps(searchQuery)))).flat(),
+    );
     const filteredActive = filterRelevantComps(foundActive, fields);
     const allComps = dedupeComps(filteredActive.comps);
     const filtered = removeOutliers(allComps);
@@ -116,7 +111,7 @@ export async function GET(request: Request) {
       outliersTrimmed: filtered.nearMatches.length,
       confidence: confidenceFor(allComps),
       source: "active",
-      query,
+      query: queries.join(" | "),
       filteredOut: filteredActive.filteredOut,
       comps: filtered.comps
         .sort((a, b) => b.endDate.localeCompare(a.endDate))
@@ -153,11 +148,48 @@ function buildSmartQuery(fields: CardFields) {
   return words.slice(0, 7).join(" ");
 }
 
+function buildSearchQueries(fields: CardFields) {
+  return Array.from(
+    new Set(
+      [
+        buildSmartQuery(fields),
+        buildFallbackQuery(fields),
+        buildCompactNumberQuery(fields),
+        buildVariantQuery(fields),
+      ].filter((searchQuery) => searchQuery.length >= 3),
+    ),
+  ).slice(0, 4);
+}
+
 function buildFallbackQuery(fields: CardFields) {
   const identity = compactIdentityPhrase(fields);
   const keyParallel = keyParallelPhrase(fields.parallel);
   const words = cleanQueryText(
     [fields.year, identity, fields.player, keyParallel].filter(Boolean).join(" "),
+  )
+    .split(" ")
+    .filter(Boolean);
+
+  return words.slice(0, 7).join(" ");
+}
+
+function buildCompactNumberQuery(fields: CardFields) {
+  const identity = compactIdentityPhrase(fields);
+  const cardNumber = normalizeCardNumber(fields.cardNumber);
+  const words = cleanQueryText(
+    [fields.year, identity, fields.player, cardNumber].filter(Boolean).join(" "),
+  )
+    .split(" ")
+    .filter(Boolean);
+
+  return words.slice(0, 7).join(" ");
+}
+
+function buildVariantQuery(fields: CardFields) {
+  const identity = compactIdentityPhrase(fields);
+  const variant = distinctiveParallelTokens(fields.parallel).join(" ");
+  const words = cleanQueryText(
+    [fields.year, identity, fields.player, variant].filter(Boolean).join(" "),
   )
     .split(" ")
     .filter(Boolean);
@@ -282,7 +314,7 @@ function isRelevantComp(title: string, fields: CardFields) {
   const setTokens = identityTokens(fields);
   const cardNumber = normalizeCardNumber(fields.cardNumber);
 
-  if (/\b(lot|lots|2 card|2-card|two card|pair|bundle)\b/i.test(title)) return false;
+  if (hasMultiCardSignal(title, normalizedTitle)) return false;
   if (playerTokens.length && !playerTokens.every((token) => normalizedTitle.includes(token))) {
     return false;
   }
@@ -358,20 +390,19 @@ function hasCardNumberSignal(rawTitle: string) {
 }
 
 function titleMatchesParallel(normalizedTitle: string, parallel: string) {
-  const keyParallel = keyParallelPhrase(parallel);
   const titleTokens = new Set(normalizedTitle.split(" ").filter(Boolean));
-  const tokens = normalizeForMatch(keyParallel)
-    .split(" ")
-    .filter((token) => token.length > 1 && !/^\d+$/.test(token));
+  const tokens = distinctiveParallelTokens(parallel);
+  const conflicts = conflictingParallelTokens(parallel);
 
+  if (conflicts.some((token) => titleTokens.has(token))) return false;
   return !tokens.length || tokens.every((token) => titleTokens.has(token));
 }
 
 function keyParallelPhrase(parallel: string) {
   const normalized = normalizeForMatch(parallel);
 
-  if (normalized.includes("red") && normalized.includes("variation")) return "Red";
-  if (normalized.includes("rookie") && normalized.includes("variation")) return "Variation";
+  if (normalized.includes("red") && normalized.includes("variation")) return "Red Variation";
+  if (normalized.includes("rookie") && normalized.includes("variation")) return "Rookie Variation";
   if (normalized.includes("mega") && normalized.includes("mojo")) return "Mega Mojo";
   if (normalized.includes("mojo")) return "Mojo";
   if (normalized.includes("eastern stars")) return "Eastern Stars";
@@ -380,6 +411,51 @@ function keyParallelPhrase(parallel: string) {
   if (normalized.includes("refractor")) return "Refractor";
 
   return parallel;
+}
+
+function distinctiveParallelTokens(parallel: string) {
+  const normalized = normalizeForMatch(parallel);
+  const tokens = new Set<string>();
+
+  if (normalized.includes("red") && (normalized.includes("variation") || normalized.includes("variations"))) {
+    return ["red"];
+  }
+  if (normalized.includes("mega")) tokens.add("mega");
+  if (normalized.includes("mojo")) tokens.add("mojo");
+  if (normalized.includes("red")) tokens.add("red");
+  if (normalized.includes("variation") || normalized.includes("variations")) tokens.add("variation");
+  if (normalized.includes("logo")) tokens.add("logo");
+  if (normalized.includes("eastern")) tokens.add("eastern");
+  if (normalized.includes("western")) tokens.add("western");
+
+  if (!tokens.size && normalized.includes("refractor")) tokens.add("refractor");
+  return Array.from(tokens);
+}
+
+function conflictingParallelTokens(parallel: string) {
+  const normalized = normalizeForMatch(parallel);
+  const conflicts = new Set<string>();
+
+  if (!normalized.includes("mojo")) conflicts.add("mojo");
+  if (!normalized.includes("shield")) conflicts.add("shield");
+  if (!normalized.includes("variation") && !normalized.includes("variations")) {
+    conflicts.add("variation");
+    conflicts.add("variations");
+  }
+  if (!normalized.includes("red")) conflicts.add("red");
+
+  return Array.from(conflicts);
+}
+
+function hasMultiCardSignal(rawTitle: string, normalizedTitle: string) {
+  if (/\b(lot|lots|2 card|2-card|two card|pair|bundle|with|plus)\b/i.test(rawTitle)) {
+    return true;
+  }
+
+  if (/\s[&+]\s/.test(rawTitle)) return true;
+  if (/\b(sterling|bonus|bonus card|multi card)\b/.test(normalizedTitle)) return true;
+
+  return false;
 }
 
 function hasNonBaseParallel(normalizedTitle: string) {

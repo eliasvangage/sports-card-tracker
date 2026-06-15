@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { SoldComps } from "@/components/SoldComps";
@@ -899,17 +899,13 @@ export default function Home() {
           )}
         </section>
 
-        <aside className={`h-fit rounded-xl border border-white/10 ${activeTheme.panel} p-3 shadow-xl lg:sticky lg:top-20`}>
-          <div className="flex items-center justify-between">
+        <aside className={`min-h-0 rounded-xl border border-white/10 ${activeTheme.panel} shadow-xl lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-hidden`}>
+          <div className="border-b border-white/10 px-3 py-3">
             <p className="text-[11px] font-black uppercase tracking-[0.2em] text-white/55">
               Card studio
             </p>
-            {selectedCard ? (
-              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
-                Live edit
-              </span>
-            ) : null}
           </div>
+          <div className="no-scrollbar max-h-[calc(100vh-9.4rem)] overflow-y-auto overflow-x-hidden p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {selectedCard ? (
             <>
               <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.015))] shadow-[0_18px_45px_rgba(0,0,0,0.32)]">
@@ -1157,6 +1153,7 @@ export default function Home() {
               <QuickPanel label="Global frame" value={frameStyle} />
             </div>
           )}
+          </div>
         </aside>
       </section>
         </>
@@ -3662,7 +3659,7 @@ function FilterSelect({
   );
 }
 
-function CardTile({
+const CardTile = memo(function CardTile({
   accent,
   borderStyle,
   card,
@@ -3822,6 +3819,31 @@ function CardTile({
         </div>
       </div>
     </button>
+  );
+}, areCardTilePropsEqual);
+
+function areCardTilePropsEqual(
+  previous: {
+    accent: string;
+    borderStyle: BorderStyle;
+    card: Card;
+    mode: DisplayMode;
+    selected: boolean;
+  },
+  next: {
+    accent: string;
+    borderStyle: BorderStyle;
+    card: Card;
+    mode: DisplayMode;
+    selected: boolean;
+  },
+) {
+  return (
+    previous.accent === next.accent &&
+    previous.borderStyle === next.borderStyle &&
+    previous.card === next.card &&
+    previous.mode === next.mode &&
+    previous.selected === next.selected
   );
 }
 
@@ -4182,13 +4204,27 @@ function cardValue(card: Card) {
 function cardSubtitle(card: Card) {
   const year = cleanMetaPart(card.year);
   const brand = cleanMetaPart(card.brand);
-  const set = removeDuplicateMeta(cleanMetaPart(card.set), [year, brand]);
-  const parallel = cleanMetaPart(card.parallel);
+  const set = compactMetaPart(cleanMetaPart(card.set), [year, brand]);
+  const parallel = compactMetaPart(cleanMetaPart(card.parallel), [year, brand, set]);
   const cardNumber = cleanCardNumber(card.cardNumber);
 
   return [year, brand, set, cardNumber ? `#${cardNumber}` : "", parallel]
     .filter(Boolean)
     .join(" ");
+}
+
+function compactMetaPart(value: string, previousParts: string[]) {
+  const previousTokens = new Set(
+    previousParts
+      .join(" ")
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean),
+  );
+  const tokens = value.split(/\s+/).filter(Boolean);
+  const compacted = tokens.filter((token) => !previousTokens.has(token.toLowerCase()));
+
+  return (compacted.length ? compacted : tokens).join(" ").trim();
 }
 
 function cleanMetaPart(value?: string) {
@@ -4203,20 +4239,6 @@ function cleanMetaPart(value?: string) {
 
 function cleanCardNumber(value?: string) {
   return cleanMetaPart(value).replace(/^#+/, "");
-}
-
-function removeDuplicateMeta(value: string, previousParts: string[]) {
-  let next = value;
-
-  for (const part of previousParts.filter(Boolean)) {
-    next = next.replace(new RegExp(`^${escapeRegExp(part)}\\s+`, "i"), "");
-  }
-
-  return next.replace(/\s+/g, " ").trim();
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function isDisplayGrade(grade?: string) {

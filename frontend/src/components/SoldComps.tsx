@@ -135,13 +135,13 @@ export function SoldComps({
 
   return (
     <section className="overflow-hidden rounded-xl border border-white/10 bg-[#151b24] shadow-2xl">
-      <div className="border-b border-white/10 bg-[linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.015))] p-4">
+      <div className={`border-b border-white/10 bg-[linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.015))] ${compact ? "p-3" : "p-4"}`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
               Current listings
             </p>
-            <p className="mt-1 max-w-full truncate text-xs font-bold text-slate-400">
+            <p className="mt-1 max-w-full truncate text-[11px] font-bold text-slate-400">
               {data?.query ?? "Enter the card identity to compare exact active eBay listings."}
             </p>
           </div>
@@ -153,7 +153,7 @@ export function SoldComps({
         </div>
       </div>
 
-      <div className="p-4">
+      <div className={compact ? "p-3" : "p-4"}>
         {!canFetch ? (
           <EmptyMessage
             card={card}
@@ -195,27 +195,37 @@ function MarketBoard({
 
   return (
     <div className="grid gap-4">
-      <div className="rounded-xl border border-white/10 bg-[#0d111a] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-        <div className="flex items-end justify-between gap-4">
+      <div className={`rounded-xl border border-white/10 bg-[#0d111a] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ${compact ? "p-3" : "p-4"}`}>
+        <div className={compact ? "grid gap-3" : "flex items-end justify-between gap-4"}>
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-              Exact average ask
+              Average ask
             </p>
-            <p className="mt-1 text-4xl font-black text-emerald-300">
+            <p className={`${compact ? "text-3xl" : "text-4xl"} mt-1 font-black text-emerald-300`}>
               {formatMoney(data.avgPrice)}
             </p>
-            <p className="mt-2 text-xs font-bold text-slate-500">
+            <p className="mt-2 text-[11px] font-bold leading-4 text-slate-500">
               Current eBay asks filtered by player, set, card number, and finish.
             </p>
           </div>
-          <div className="shrink-0 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-right">
-            <p className="text-lg font-black text-white">{data.samples}</p>
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-              listing{data.samples === 1 ? "" : "s"}
-            </p>
-            <p className="mt-1 text-[11px] font-bold text-slate-400">
-              {formatMoney(data.lowPrice)} - {formatMoney(data.highPrice)}
-            </p>
+          <div className={`${compact ? "grid grid-cols-2 gap-2 text-left" : "shrink-0 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-right"}`}>
+            <div className={compact ? "rounded-lg border border-white/10 bg-white/[0.03] p-2" : ""}>
+              <p className="text-lg font-black text-white">{data.samples}</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                listing{data.samples === 1 ? "" : "s"}
+              </p>
+            </div>
+            <div className={compact ? "rounded-lg border border-white/10 bg-white/[0.03] p-2" : ""}>
+              <p className="text-xs font-black text-white">{formatMoney(data.lowPrice)}</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">low</p>
+              {compact ? <p className="mt-1 text-xs font-black text-white">{formatMoney(data.highPrice)}</p> : null}
+              {compact ? <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">high</p> : null}
+            </div>
+            {!compact ? (
+              <p className="mt-1 text-[11px] font-bold text-slate-400">
+                {formatMoney(data.lowPrice)} - {formatMoney(data.highPrice)}
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
@@ -242,12 +252,12 @@ function MarketBoard({
         </div>
       )}
 
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className={`grid gap-2 ${compact ? "" : "sm:grid-cols-2"}`}>
         <a
           href={ebaySearchUrl(card)}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
+          className="inline-flex min-h-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center text-xs font-black leading-4 text-slate-200 hover:bg-white/10"
         >
           Open eBay search
         </a>
@@ -255,7 +265,7 @@ function MarketBoard({
           href={oneThirtyPointUrl(card)}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-10 items-center justify-center rounded-lg border border-[#ff5533]/30 bg-[#ff5533]/10 px-4 text-sm font-black text-orange-100 hover:bg-[#ff5533]/15"
+          className="inline-flex min-h-10 items-center justify-center rounded-lg border border-[#ff5533]/30 bg-[#ff5533]/10 px-3 py-2 text-center text-xs font-black leading-4 text-orange-100 hover:bg-[#ff5533]/15"
         >
           Check 130point sales
         </a>
@@ -300,11 +310,21 @@ function CompRow({ compact, comp }: { compact: boolean; comp: SoldComp }) {
       href={comp.url}
       target="_blank"
       rel="noreferrer"
-      className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-xl border border-white/10 bg-[#0d111a] p-3 transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.04]"
+      className="grid grid-cols-[38px_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-white/10 bg-[#0d111a] p-2 transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.04]"
     >
+      <div className="relative h-12 w-[38px] overflow-hidden rounded-lg border border-white/10 bg-black/30">
+        {comp.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={comp.imageUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+        ) : (
+          <div className="grid h-full place-items-center text-[9px] font-black text-slate-600">
+            eBay
+          </div>
+        )}
+      </div>
       <div className="min-w-0">
-        <p className={`${compact ? "text-[11px]" : "text-sm"} truncate font-black text-white`}>
-          {trimTitle(comp.title, compact ? 46 : 70)}
+        <p className={`${compact ? "text-[10px] leading-3" : "text-sm"} truncate font-black text-white`}>
+          {trimTitle(comp.title, compact ? 38 : 70)}
         </p>
         <p className="mt-1 text-[10px] font-bold text-slate-500">
           {formatDate(comp.endDate)}
@@ -315,7 +335,7 @@ function CompRow({ compact, comp }: { compact: boolean; comp: SoldComp }) {
           ) : null}
         </p>
       </div>
-      <p className="text-sm font-black text-white">{formatMoney(comp.price)}</p>
+      <p className={`${compact ? "text-xs" : "text-sm"} whitespace-nowrap font-black text-white`}>{formatMoney(comp.price)}</p>
     </a>
   );
 }
