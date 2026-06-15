@@ -157,6 +157,7 @@ export function SoldComps({
         {!canFetch ? (
           <EmptyMessage
             card={card}
+            compact={compact}
             text="Add a player and year to check exact current listings."
           />
         ) : isLoading ? (
@@ -173,7 +174,7 @@ export function SoldComps({
             onValueAccepted={onValueAccepted}
           />
         ) : (
-          <EmptyMessage card={card} text="No exact current listings found for this card." />
+          <EmptyMessage card={card} compact={compact} text="No exact current listings found for this card." />
         )}
       </div>
     </section>
@@ -340,20 +341,28 @@ function CompRow({ compact, comp }: { compact: boolean; comp: SoldComp }) {
   );
 }
 
-function EmptyMessage({ card, text }: { card: SoldCompsCard; text: string }) {
+function EmptyMessage({
+  card,
+  compact,
+  text,
+}: {
+  card: SoldCompsCard;
+  compact: boolean;
+  text: string;
+}) {
   const href = ebaySearchUrl(card);
   const researchHref = oneThirtyPointUrl(card);
 
   return (
     <div className="rounded-xl border border-white/10 bg-[#0d111a] p-4 text-xs font-bold leading-5 text-slate-300">
       <p>{text}</p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <div className={`mt-3 grid gap-2 ${compact ? "" : "sm:grid-cols-2"}`}>
         {href ? (
           <a
             href={href}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
+            className="inline-flex min-h-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center text-xs font-black leading-4 text-slate-200 hover:bg-white/10"
           >
             Search eBay -&gt;
           </a>
@@ -362,7 +371,7 @@ function EmptyMessage({ card, text }: { card: SoldCompsCard; text: string }) {
           href={researchHref}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-10 items-center justify-center rounded-lg border border-[#ff5533]/30 bg-[#ff5533]/10 px-4 text-sm font-black text-orange-100 hover:bg-[#ff5533]/15"
+          className="inline-flex min-h-10 items-center justify-center rounded-lg border border-[#ff5533]/30 bg-[#ff5533]/10 px-3 py-2 text-center text-xs font-black leading-4 text-orange-100 hover:bg-[#ff5533]/15"
         >
           Check 130point -&gt;
         </a>

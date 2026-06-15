@@ -310,6 +310,25 @@ export default function Home() {
     setSavedCards(nextCards);
   }
 
+  function applyLookToCollection() {
+    const visibleIds = new Set(filteredCards.map((card) => card.id));
+    if (!visibleIds.size) return;
+
+    const accent = selectedCard?.color ?? activeTheme.accent;
+    setSavedCards((cards) =>
+      cards.map((card) =>
+        visibleIds.has(card.id)
+          ? {
+              ...card,
+              borderStyle,
+              color: card.color || accent,
+              frameStyle,
+            }
+          : card,
+      ),
+    );
+  }
+
   function exportCards() {
     const headers = [
       "player",
@@ -696,31 +715,31 @@ export default function Home() {
               <summary className="cursor-pointer list-none text-sm font-black text-sky-100 group-open:text-white">
                 Vault tools
               </summary>
-              <div className="mt-3 grid gap-3">
-                <div className="grid gap-2">
+              <div className="mt-2 grid gap-2">
+                <div className="grid gap-1.5">
                   <input
                     value={newCollection}
                     onChange={(event) => setNewCollection(event.target.value)}
-                    className="h-9 rounded-md border border-white/10 bg-black/30 px-3 text-xs font-bold text-white outline-none placeholder:text-slate-500 focus:border-white/40"
+                    className="h-8 min-w-0 rounded-md border border-white/10 bg-black/30 px-2 text-[11px] font-bold text-white outline-none placeholder:text-slate-500 focus:border-white/40"
                     placeholder="New collection"
                   />
                   <button
                     onClick={addCollection}
-                    className="h-8 w-full rounded-md border border-white/10 bg-white/5 px-2 text-xs font-black text-slate-200 hover:bg-white/10"
+                    className="h-7 w-full rounded-md border border-white/10 bg-white/5 px-2 text-[11px] font-black text-slate-200 hover:bg-white/10"
                   >
                     Add collection
                   </button>
                 </div>
-                <div className="grid gap-2 border-t border-white/10 pt-3">
+                <div className="grid gap-1.5 border-t border-white/10 pt-2">
                   <input
                     value={newChasePlayer}
                     onChange={(event) => setNewChasePlayer(event.target.value)}
-                    className="h-9 rounded-md border border-white/10 bg-black/30 px-3 text-xs font-bold text-white outline-none placeholder:text-slate-500 focus:border-white/40"
+                    className="h-8 min-w-0 rounded-md border border-white/10 bg-black/30 px-2 text-[11px] font-bold text-white outline-none placeholder:text-slate-500 focus:border-white/40"
                     placeholder="Card to chase"
                   />
                   <button
                     onClick={addChaseCard}
-                    className="h-8 w-full rounded-md border border-white/10 bg-white/5 px-2 text-xs font-black text-slate-200 hover:bg-white/10"
+                    className="h-7 w-full rounded-md border border-white/10 bg-white/5 px-2 text-[11px] font-black text-slate-200 hover:bg-white/10"
                   >
                     Add wishlist
                   </button>
@@ -774,6 +793,13 @@ export default function Home() {
                     ))}
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => applyLookToCollection()}
+                  className="h-8 rounded-md border border-white/10 bg-white/5 px-2 text-[11px] font-black text-slate-200 hover:bg-white/10"
+                >
+                  Apply look to collection
+                </button>
               </div>
             </details>
           </RailSection>
@@ -1874,6 +1900,17 @@ function PlatformPreview({
   const soldCards = allCards.filter((card) => card.saleStatus === "Sold");
   const vaultValue = activeCards.reduce((total, card) => total + cardValue(card), 0);
   const recentCards = allCards.slice(0, 6);
+  const topCards = allCards.toSorted((a, b) => cardValue(b) - cardValue(a)).slice(0, 3);
+  const profileTags = Array.from(
+    new Set(
+      [
+        ...favoritePCs,
+        ...teams,
+        ...allCards.flatMap((card) => card.tags ?? []),
+        ...allCards.map((card) => card.sport).filter(Boolean),
+      ].filter(Boolean),
+    ),
+  ).slice(0, 10);
 
   function updateProfile(updates: Partial<CollectorProfile>) {
     onProfileChange({ ...profile, ...updates });
@@ -1898,21 +1935,25 @@ function PlatformPreview({
   }
 
   return (
-    <section className="mx-auto grid max-w-[1500px] gap-4 px-4 py-4 sm:px-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <section className="mx-auto grid max-w-[1500px] gap-4 px-4 py-4 sm:px-6 xl:grid-cols-[minmax(0,1fr)_340px]">
       <div className="grid gap-4">
-        <div className="overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(135deg,rgba(21,27,36,0.95),rgba(13,17,26,0.96))] shadow-2xl">
+        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(135deg,rgba(21,27,36,0.98),rgba(13,17,26,0.96))] shadow-2xl">
+          <div className="absolute inset-0 opacity-50 [background-image:linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:34px_34px]" />
           <div
-            className="h-32 bg-[linear-gradient(120deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))]"
+            className="absolute inset-x-0 top-0 h-1"
             style={{
-              borderTop: `4px solid ${accent}`,
+              background: `linear-gradient(90deg, ${accent}, rgba(32,227,178,0.75), rgba(56,189,248,0.75))`,
             }}
           />
-          <div className="p-6">
-            <div className="-mt-20 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="relative grid gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-center">
+            <div>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
                 <div
-                  className="grid h-28 w-28 place-items-center rounded-3xl border-4 border-[#111722] text-3xl font-black text-white shadow-2xl"
-                  style={{ backgroundColor: accent }}
+                  className="grid h-28 w-28 place-items-center rounded-3xl border border-white/20 text-3xl font-black text-white shadow-2xl"
+                  style={{
+                    background: `linear-gradient(135deg, ${accent}, rgba(255,255,255,0.1))`,
+                    boxShadow: `0 0 36px ${accent}33`,
+                  }}
                 >
                   {profile.avatarInitials || "CR"}
                 </div>
@@ -1930,13 +1971,23 @@ function PlatformPreview({
                   </div>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <p className="mt-5 max-w-3xl text-sm font-bold leading-6 text-slate-300">
+                {isProfile ? profile.bio : "Track cards you want next, compare them against the vault, and keep your collecting goals visible."}
+              </p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {(profileTags.length ? profileTags : ["Rookie cards", "Autos", "Trade bait"]).slice(0, 6).map((tag) => (
+                  <span key={tag} className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-black text-slate-200">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-6 flex flex-wrap gap-2">
                 <button
                   onClick={onBack}
                   className="h-10 rounded-lg px-4 text-sm font-black text-white"
                   style={{ backgroundColor: accent }}
                 >
-                  Home
+                  Open collection
                 </button>
                 <button
                   onClick={() => navigator.clipboard?.writeText(`https://${publicUrl}`)}
@@ -1946,21 +1997,20 @@ function PlatformPreview({
                 </button>
               </div>
             </div>
-            <div className="mt-6 grid gap-2 sm:grid-cols-4">
-              <ProfileStat label="Cards" value={allCards.length.toString()} />
-              <ProfileStat label="Vault value" value={formatMoney(vaultValue)} />
-              <ProfileStat label="Favorites" value={favoriteCards.length.toString()} />
-              <ProfileStat label={isProfile ? "Trade shelf" : "Chases"} value={isProfile ? tradeCards.length.toString() : profileCards.length.toString()} />
-            </div>
-            <p className="mt-5 max-w-3xl text-sm font-bold leading-6 text-slate-300">
-              {isProfile ? profile.bio : "Track cards you want next, compare them against the vault, and keep your collecting goals visible."}
-            </p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              {(favoritePCs.length ? favoritePCs : ["Blue Jays PC", "Rookie cards", "Trade bait"]).map((team) => (
-                <span key={team} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-black text-slate-200">
-                  {team}
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-4 shadow-2xl">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Cover shelf</p>
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-black text-slate-200">
+                  {publicVaults[0] ?? collectionName}
                 </span>
-              ))}
+              </div>
+              <ProfileCoverShelf accent={accent} cards={topCards.length ? topCards : profileCards.slice(0, 3)} />
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <ProfileStat label="Vault value" value={formatMoney(vaultValue)} />
+                <ProfileStat label="Cards" value={allCards.length.toString()} />
+                <ProfileStat label="Favorites" value={favoriteCards.length.toString()} />
+                <ProfileStat label={isProfile ? "For trade" : "Chases"} value={isProfile ? tradeCards.length.toString() : profileCards.length.toString()} />
+              </div>
             </div>
           </div>
         </div>
@@ -1990,9 +2040,9 @@ function PlatformPreview({
                     <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
                       Featured shelf
                     </p>
-                    <h3 className="mt-1 text-2xl font-black text-white">
-                      {isProfile ? "Cards that define the vault" : "Cards to chase"}
-                    </h3>
+                  <h3 className="mt-1 text-2xl font-black text-white">
+                    {isProfile ? "Signature shelf" : "Cards to chase"}
+                  </h3>
                   </div>
                   <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
                     {profileCards.length} shown
@@ -2024,9 +2074,8 @@ function PlatformPreview({
                     ) : null}
                   </div>
                 </ProfilePanel>
-                <ProfilePanel title="Collector notes">
-                  <p className="text-sm font-bold leading-6 text-slate-300">{profile.bio}</p>
-                  <div className="mt-4 grid gap-2">
+                <ProfilePanel title="Vault snapshot">
+                  <div className="grid gap-2">
                     <MarketplaceSignal label="Public vaults" value={publicVaults.length.toString()} />
                     <MarketplaceSignal label="Listed cards" value={listedCards.length.toString()} />
                     <MarketplaceSignal label="Sold cards" value={soldCards.length.toString()} />
@@ -2139,7 +2188,13 @@ function PlatformPreview({
           profile={profile}
           vaultCount={publicVaults.length}
         />
-        <CollectorSearchPanel accent={accent} />
+        <CollectorSearchPanel
+          accent={accent}
+          profileTags={profileTags}
+          teams={teams}
+          tradeCount={tradeCards.length}
+          vaultValue={vaultValue}
+        />
         <ProfilePanel title="Profile signals">
           <div className="grid gap-2">
             <MarketplaceSignal label="Vault value" value={formatMoney(vaultValue)} />
@@ -2150,6 +2205,49 @@ function PlatformPreview({
         </ProfilePanel>
       </aside>
     </section>
+  );
+}
+
+function ProfileCoverShelf({ accent, cards }: { accent: string; cards: Card[] }) {
+  if (cards.length === 0) {
+    return (
+      <div className="grid h-40 place-items-center rounded-2xl border border-dashed border-white/10 bg-[#0d111a] text-sm font-bold text-slate-500">
+        Feature cards to build a cover shelf.
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative mx-auto flex h-40 max-w-[290px] items-center justify-center">
+      <div
+        className="absolute inset-x-8 bottom-2 h-4 rounded-full blur-2xl"
+        style={{ backgroundColor: `${accent}55` }}
+      />
+      {cards.slice(0, 3).map((card, index) => {
+        const offset = index - 1;
+
+        return (
+          <div
+            key={card.id}
+            className="absolute aspect-[5/7] w-24 overflow-hidden rounded-xl border border-white/15 bg-[#0d111a] shadow-2xl ring-2 ring-black/40 transition-transform duration-200 hover:z-20 hover:-translate-y-2"
+            style={{
+              left: `calc(50% + ${offset * 54}px)`,
+              transform: `translateX(-50%) rotate(${offset * 9}deg)`,
+              zIndex: index === 1 ? 10 : 5 - Math.abs(offset),
+              boxShadow: `0 16px 42px rgba(0,0,0,0.45), 0 0 22px ${card.color || accent}22`,
+            }}
+          >
+            <div
+              className="absolute inset-x-0 bottom-0 z-10 h-1.5"
+              style={{
+                background: `linear-gradient(90deg, ${card.color || accent}, #20e3b2, #38bdf8, #ec4899)`,
+              }}
+            />
+            <EditedCardImage accent={accent} card={card} sizes="120px" />
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -3346,37 +3444,64 @@ function ProfilePanel({
   );
 }
 
-function CollectorSearchPanel({ accent }: { accent: string }) {
+function CollectorSearchPanel({
+  accent,
+  profileTags = [],
+  teams = [],
+  tradeCount = 0,
+  vaultValue = 0,
+}: {
+  accent: string;
+  profileTags?: string[];
+  teams?: string[];
+  tradeCount?: number;
+  vaultValue?: number;
+}) {
+  const visibleTags = profileTags.length ? profileTags.slice(0, 8) : ["Rookies", "Autos", "Prospects"];
+  const visibleTeams = teams.length ? teams.slice(0, 4) : ["No teams yet"];
+
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
-      <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-        Collector network
-      </p>
-      <h3 className="mt-2 text-2xl font-black text-white">Find people and PCs</h3>
-      <div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-2">
-        <input
-          className="h-10 w-full rounded-lg border border-white/10 bg-[#0b1018] px-3 text-sm font-bold text-white outline-none placeholder:text-slate-500 focus:border-white/40"
-          placeholder="Search users, teams, players..."
-        />
-      </div>
-      <div className="mt-3 grid gap-2">
-        {[
-          "Follow collectors with matching PCs",
-          "Share public vault links",
-          "Message about trades or sales",
-          "Browse team and player communities",
-        ].map((item) => (
-          <div
-            key={item}
-            className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-bold text-slate-300"
-          >
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(160deg,rgba(21,27,36,0.98),rgba(13,17,26,0.98))] shadow-xl">
+      <div
+        className="h-1"
+        style={{ background: `linear-gradient(90deg, ${accent}, rgba(56,189,248,0.75), rgba(236,72,153,0.75))` }}
+      />
+      <div className="p-4">
+        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+          Collector board
+        </p>
+        <h3 className="mt-2 text-2xl font-black text-white">PC focus</h3>
+        <div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-2">
+          <input
+            className="h-10 w-full rounded-lg border border-white/10 bg-[#0b1018] px-3 text-sm font-bold text-white outline-none placeholder:text-slate-500 focus:border-white/40"
+            placeholder="Search collectors, teams, players..."
+          />
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {visibleTags.map((tag) => (
             <span
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: accent }}
-            />
-            {item}
+              key={tag}
+              className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-black text-slate-200"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <MiniStat label="Value" value={formatMoney(vaultValue)} />
+          <MiniStat label="Trades" value={tradeCount.toString()} />
+        </div>
+        <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Teams</p>
+          <div className="mt-2 grid gap-2">
+            {visibleTeams.map((team) => (
+              <div key={team} className="flex items-center gap-2 text-sm font-bold text-slate-300">
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: accent }} />
+                <span className="truncate">{team}</span>
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );
@@ -3455,7 +3580,7 @@ function MiniStat({
       <span className="block truncate text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
         {label}
       </span>
-      <span className={`mt-1 block truncate text-base font-black ${muted ? "text-slate-300" : "text-white"}`}>
+      <span className={`mt-1 block min-w-0 truncate text-sm font-black leading-5 ${muted ? "text-slate-300" : "text-white"}`} title={value}>
         {value}
       </span>
     </div>
@@ -3684,7 +3809,7 @@ const CardTile = memo(function CardTile({
     ["Rookie", "Auto", "Patch", "Favorite"].includes(tag),
   );
   const selectedClass = selected
-    ? "border-[#ff5533]/60 shadow-[0_0_0_2px_rgba(255,85,51,0.3),0_20px_40px_rgba(0,0,0,0.4)]"
+    ? "border-white/25"
     : "border-white/[0.08] shadow-[0_18px_38px_rgba(0,0,0,0.32)]";
 
   if (mode === "Compact") {
@@ -3731,13 +3856,14 @@ const CardTile = memo(function CardTile({
     <button
       onClick={onClick}
       onDoubleClick={onDoubleClick}
-      className={`group h-full overflow-hidden rounded-2xl border bg-[linear-gradient(145deg,#151b24,#0d111a)] p-3 text-left transition duration-150 ease-out [contain-intrinsic-size:520px] hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)] ${selectedClass} ${
-        highlighted ? "ring-1 ring-[#ff5533]/25" : ""
+      className={`group h-full overflow-hidden rounded-2xl border bg-[linear-gradient(145deg,#151b24,#0d111a)] p-3 text-left transition-[transform,border-color,box-shadow] duration-100 ease-out [contain-intrinsic-size:520px] hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)] ${selectedClass} ${
+        highlighted ? "ring-1 ring-white/15" : ""
       } ${tileBorderAccentClass(borderStyle)} ${
         mode === "Showcase"
           ? "grid items-center gap-5 p-5 sm:grid-cols-[320px_minmax(0,1fr)]"
           : "flex flex-col"
       }`}
+      style={tileSurfaceStyle(borderStyle, tileAccent, selected)}
     >
       <div className={`relative grid place-items-center overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] p-4 ${mode === "Showcase" ? "h-[330px]" : "h-[260px]"}`}>
         <div
@@ -4057,14 +4183,38 @@ function tileBorderClass(borderStyle: BorderStyle) {
 
 function tileBorderAccentClass(borderStyle: BorderStyle) {
   if (borderStyle === "Chrome") {
-    return "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_18px_38px_rgba(0,0,0,0.34)]";
+    return "bg-[linear-gradient(145deg,#18202b,#0b1018)]";
   }
 
   if (borderStyle === "Glow") {
-    return "shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_0_30px_rgba(255,85,51,0.15),0_18px_38px_rgba(0,0,0,0.36)]";
+    return "bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.08),transparent_44%),linear-gradient(145deg,#151b24,#0d111a)]";
   }
 
   return "";
+}
+
+function tileSurfaceStyle(borderStyle: BorderStyle, accent: string, selected: boolean) {
+  const selectedRing = selected ? `0 0 0 2px ${accent}99, ` : "";
+
+  if (borderStyle === "Chrome") {
+    return {
+      boxShadow: `${selectedRing}inset 0 1px 0 rgba(255,255,255,0.24), inset 0 -1px 0 ${accent}55, 0 18px 38px rgba(0,0,0,0.36)`,
+    };
+  }
+
+  if (borderStyle === "Glow") {
+    return {
+      boxShadow: `${selectedRing}0 0 26px ${accent}42, 0 18px 38px rgba(0,0,0,0.38)`,
+    };
+  }
+
+  if (selected) {
+    return {
+      boxShadow: `${selectedRing}0 18px 38px rgba(0,0,0,0.34)`,
+    };
+  }
+
+  return undefined;
 }
 
 function previewBorderClass(borderStyle: BorderStyle) {
@@ -4080,10 +4230,16 @@ function previewBorderClass(borderStyle: BorderStyle) {
 }
 
 function previewBorderStyle(borderStyle: BorderStyle, accent: string) {
+  if (borderStyle === "Chrome") {
+    return {
+      boxShadow: `inset 0 1px 0 rgba(255,255,255,0.26), inset 0 -1px 0 ${accent}55, 0 18px 38px rgba(0,0,0,0.36)`,
+    };
+  }
+
   if (borderStyle !== "Glow") return undefined;
 
   return {
-    boxShadow: `0 0 0 1px rgba(255,255,255,0.08), 0 0 28px ${accent}70, 0 0 70px ${accent}24, 0 18px 40px rgba(0,0,0,0.38)`,
+    boxShadow: `0 0 0 1px rgba(255,255,255,0.08), 0 0 34px ${accent}7a, 0 0 80px ${accent}28, 0 18px 40px rgba(0,0,0,0.38)`,
   };
 }
 
@@ -4229,6 +4385,7 @@ function compactMetaPart(value: string, previousParts: string[]) {
 
 function cleanMetaPart(value?: string) {
   const clean = (value ?? "")
+    .replace(/^\[(none|n\/a|na|null|undefined|unknown|not specified)\]$/i, "$1")
     .replace(/\s+/g, " ")
     .trim();
 
