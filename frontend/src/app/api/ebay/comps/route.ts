@@ -2,31 +2,20 @@ import { NextResponse } from "next/server";
 import { EbayConfigError, getEbayAppToken } from "@/lib/ebay";
 import { checkRateLimit, requestIdentifier } from "@/lib/rate-limit";
 
-type CompSource = "sold" | "active";
-type ApiSource = CompSource | "mixed";
+type CompSource = "active";
+type ApiSource = "active";
 type Confidence = "high" | "medium" | "low";
 type NearMatchReason = "outlier_high" | "outlier_low";
 
 type CardFields = {
   brand: string;
+  cardNumber: string;
   grade: string;
   parallel: string;
   player: string;
   set: string;
+  tags: string;
   year: string;
-};
-
-type FindingItem = {
-  condition?: Array<{ conditionDisplayName?: string[] }>;
-  galleryURL?: string[];
-  listingInfo?: Array<{ endTime?: string[] }>;
-  sellingStatus?: Array<{
-    convertedCurrentPrice?: Array<{ __value__?: string }>;
-    currentPrice?: Array<{ __value__?: string }>;
-    soldPrice?: Array<{ __value__?: string }>;
-  }>;
-  title?: string[];
-  viewItemURL?: string[];
 };
 
 type BrowseItem = {
@@ -67,9 +56,10 @@ type CompResponse = {
     url: string;
     reason: NearMatchReason;
   }>;
+  filteredOut?: number;
 };
 
-const allowedParams = ["player", "year", "brand", "set", "parallel", "grade"] as const;
+const allowedParams = ["player", "year", "brand", "set", "cardNumber", "parallel", "grade", "tags"] as const;
 const entriesPerPage = "25";
 
 export async function GET(request: Request) {
@@ -102,17 +92,9 @@ export async function GET(request: Request) {
   }
 
   try {
-    let soldComps: RawComp[] = [];
-
-    try {
-      soldComps = await findFindingComps(query, "sold");
-    } catch {
-      soldComps = [];
-    }
-
-    const activeComps = soldComps.length < 3 ? await findActiveComps(query) : [];
-    const allComps = dedupeComps([...soldComps, ...activeComps]);
-    const soldCount = soldComps.length;
+    const foundActive = await findBrowseActiveComps(query);
+    const filteredActive = filterRelevantComps(foundActive, fields);
+    const allComps = dedupeComps(filteredActive.comps);
     const filtered = removeOutliers(allComps);
     const stats = priceStats(filtered.comps.map((comp) => comp.price));
 
@@ -122,16 +104,14 @@ export async function GET(request: Request) {
       lowPrice: stats.lowPrice,
       highPrice: stats.highPrice,
       samples: filtered.comps.length,
-      totalFound: allComps.length,
+      totalFound: allComps.length + filteredActive.filteredOut,
       outliersTrimmed: filtered.nearMatches.length,
-      confidence: confidenceFor(soldCount, allComps),
-      source: sourceFor(soldComps, activeComps),
+      confidence: confidenceFor(allComps),
+      source: "active",
       query,
+      filteredOut: filteredActive.filteredOut,
       comps: filtered.comps
-        .sort((a, b) => {
-          if (a.source !== b.source) return a.source === "sold" ? -1 : 1;
-          return b.endDate.localeCompare(a.endDate);
-        })
+        .sort((a, b) => b.endDate.localeCompare(a.endDate))
         .slice(0, 6),
       nearMatches: filtered.nearMatches,
     } satisfies CompResponse);
@@ -141,7 +121,7 @@ export async function GET(request: Request) {
         error:
           error instanceof EbayConfigError
             ? "eBay comps need EBAY_CLIENT_ID and EBAY_CLIENT_SECRET configured on the server."
-            : "Unable to connect to eBay comps right now. Try again, or open the manual sold search below.",
+            : "Unable to connect to eBay market listings right now. Try again, or open the manual eBay search below.",
       },
       { status: error instanceof EbayConfigError ? 501 : 502 },
     );
@@ -149,11 +129,12 @@ export async function GET(request: Request) {
 }
 
 function buildSmartQuery(fields: CardFields) {
-  const brand = bestBrandPhrase(fields);
+  const identity = bestIdentityPhrase(fields);
   const grade = fields.grade && fields.grade !== "Raw" ? fields.grade : "";
   const parallel = isBaseParallel(fields.parallel) ? "" : fields.parallel;
+  const cardNumber = normalizeCardNumber(fields.cardNumber);
   const words = cleanQueryText(
-    [fields.year, brand, fields.player, grade, parallel].filter(Boolean).join(" "),
+    [fields.year, identity, fields.player, cardNumber, grade, parallel].filter(Boolean).join(" "),
   )
     .split(" ")
     .filter(Boolean);
@@ -161,9 +142,11 @@ function buildSmartQuery(fields: CardFields) {
   return words.slice(0, 7).join(" ");
 }
 
-function bestBrandPhrase(fields: CardFields) {
-  const combined = `${fields.brand} ${fields.set}`.toLowerCase();
+function bestIdentityPhrase(fields: CardFields) {
+  const set = fields.set.replace(/\b(19[8-9]\d|20[0-3]\d)\b/g, "").trim();
+  const combined = `${fields.brand} ${set}`.toLowerCase();
 
+  if (combined.includes("topps chrome black")) return "Topps Chrome Black";
   if (combined.includes("bowman chrome")) return "Bowman Chrome";
   if (combined.includes("bowman draft")) return "Bowman Draft";
   if (combined.includes("topps chrome")) return "Topps Chrome";
@@ -172,71 +155,7 @@ function bestBrandPhrase(fields: CardFields) {
   if (combined.includes("national treasures")) return "National Treasures";
   if (combined.includes("panini prizm")) return "Panini Prizm";
 
-  return fields.brand || fields.set.split(" ").slice(0, 2).join(" ");
-}
-
-async function findFindingComps(query: string, source: CompSource) {
-  const appId = process.env.EBAY_APP_ID || process.env.EBAY_CLIENT_ID;
-  if (!appId) {
-    throw new EbayConfigError();
-  }
-
-  const operationName = source === "sold" ? "findCompletedItems" : "findItemsAdvanced";
-  const params = new URLSearchParams({
-    "GLOBAL-ID": "EBAY-US",
-    "OPERATION-NAME": operationName,
-    "REST-PAYLOAD": "",
-    "RESPONSE-DATA-FORMAT": "JSON",
-    "SECURITY-APPNAME": appId,
-    "SERVICE-VERSION": "1.0.0",
-    categoryId: "212",
-    keywords: query,
-    "itemFilter(0).name": "ListingType",
-    "itemFilter(0).value(0)": "AuctionWithBIN",
-    "itemFilter(0).value(1)": "FixedPrice",
-    "itemFilter(0).value(2)": "Auction",
-    "paginationInput.entriesPerPage": entriesPerPage,
-    sortOrder: "EndTimeSoonest",
-  });
-
-  if (source === "sold") {
-    params.set("itemFilter(1).name", "SoldItemsOnly");
-    params.set("itemFilter(1).value", "true");
-  }
-
-  const response = await fetch(
-    `https://svcs.ebay.com/services/search/FindingService/v1?${params.toString()}`,
-    { next: { revalidate: 60 } },
-  );
-
-  if (!response.ok) {
-    throw new Error("eBay Finding API did not return results.");
-  }
-
-  const body = (await response.json()) as Record<string, Array<{
-    ack?: string[];
-    errorMessage?: Array<{ error?: Array<{ message?: string[] }> }>;
-    searchResult?: Array<{ item?: FindingItem[] }>;
-  }> | undefined>;
-  const responseKey =
-    source === "sold" ? "findCompletedItemsResponse" : "findItemsAdvancedResponse";
-  const apiResponse = body[responseKey]?.[0];
-
-  if (apiResponse?.ack?.[0] === "Failure") {
-    throw new Error(apiResponse.errorMessage?.[0]?.error?.[0]?.message?.[0] ?? "eBay Finding API failed.");
-  }
-
-  const items = apiResponse?.searchResult?.[0]?.item ?? [];
-
-  return items.map((item) => toComp(item, source)).filter(isRawComp);
-}
-
-async function findActiveComps(query: string) {
-  try {
-    return await findFindingComps(query, "active");
-  } catch {
-    return findBrowseActiveComps(query);
-  }
+  return fields.brand || set.split(" ").slice(0, 3).join(" ");
 }
 
 async function findBrowseActiveComps(query: string) {
@@ -283,28 +202,6 @@ function toBrowseComp(item: BrowseItem): RawComp | null {
   };
 }
 
-function toComp(item: FindingItem, source: CompSource): RawComp | null {
-  const price = Number(
-    item.sellingStatus?.[0]?.soldPrice?.[0]?.__value__ ??
-      item.sellingStatus?.[0]?.convertedCurrentPrice?.[0]?.__value__ ??
-      item.sellingStatus?.[0]?.currentPrice?.[0]?.__value__,
-  );
-  const title = item.title?.[0]?.trim() ?? "";
-  const url = item.viewItemURL?.[0] ?? "";
-
-  if (!title || !url || !Number.isFinite(price) || price <= 0) return null;
-
-  return {
-    condition: item.condition?.[0]?.conditionDisplayName?.[0] ?? "",
-    endDate: item.listingInfo?.[0]?.endTime?.[0] ?? "",
-    imageUrl: item.galleryURL?.[0] ?? "",
-    price: Math.round(price * 100) / 100,
-    source,
-    title,
-    url,
-  };
-}
-
 function removeOutliers(comps: RawComp[]) {
   if (comps.length < 4) {
     return { comps, nearMatches: [] };
@@ -335,6 +232,93 @@ function removeOutliers(comps: RawComp[]) {
   return { comps: kept, nearMatches };
 }
 
+function filterRelevantComps(comps: RawComp[], fields: CardFields) {
+  const filtered = comps.filter((comp) => isRelevantComp(comp.title, fields));
+
+  return {
+    comps: filtered,
+    filteredOut: comps.length - filtered.length,
+  };
+}
+
+function isRelevantComp(title: string, fields: CardFields) {
+  const normalizedTitle = normalizeForMatch(title);
+  const playerTokens = normalizeForMatch(fields.player)
+    .split(" ")
+    .filter((token) => token.length > 1);
+  const setTokens = identityTokens(fields);
+  const cardNumber = normalizeCardNumber(fields.cardNumber);
+
+  if (/\b(lot|lots|2 card|2-card|two card|pair|bundle)\b/i.test(title)) return false;
+  if (playerTokens.length && !playerTokens.every((token) => normalizedTitle.includes(token))) {
+    return false;
+  }
+  if (fields.year && !normalizedTitle.includes(fields.year)) return false;
+  if (setTokens.length && !setTokens.every((token) => normalizedTitle.includes(token))) {
+    return false;
+  }
+  if (cardNumber && !titleHasCardNumber(normalizedTitle, cardNumber)) return false;
+
+  if (isBaseParallel(fields.parallel) && hasNonBaseParallel(normalizedTitle)) {
+    return false;
+  }
+  if (!hasTag(fields, "Auto") && hasAutoSignal(normalizedTitle)) return false;
+  if (!hasTag(fields, "Patch") && /\b(patch|rpa|relic|jersey)\b/.test(normalizedTitle)) {
+    return false;
+  }
+
+  if (!isBaseParallel(fields.parallel)) {
+    const parallelTokens = normalizeForMatch(fields.parallel)
+      .split(" ")
+      .filter((token) => token.length > 1 && !/^\d+$/.test(token));
+
+    if (parallelTokens.length && !parallelTokens.every((token) => normalizedTitle.includes(token))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function identityTokens(fields: CardFields) {
+  const identity = bestIdentityPhrase(fields);
+  return normalizeForMatch(identity)
+    .split(" ")
+    .filter((token) => token.length > 1 && token !== fields.year);
+}
+
+function normalizeForMatch(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/#/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function titleHasCardNumber(normalizedTitle: string, cardNumber: string) {
+  const cleanNumber = normalizeCardNumber(cardNumber);
+  if (!cleanNumber) return true;
+
+  const escaped = cleanNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|\\s)${escaped}(\\s|$)`, "i").test(normalizedTitle);
+}
+
+function hasNonBaseParallel(normalizedTitle: string) {
+  return /\b(superfractor|refractor|mojo|silver|gold|blue|red|orange|purple|pink|green|aqua|holo|rainbow|cracked ice|shimmer|disco|hyper|sepia|xfractor|x-fractor|speckle|wave|lava)\b/.test(normalizedTitle);
+}
+
+function hasAutoSignal(normalizedTitle: string) {
+  return /\b(auto|autograph|signed|redemption|cba|certified autograph)\b/.test(normalizedTitle);
+}
+
+function hasTag(fields: CardFields, tag: string) {
+  return fields.tags
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .includes(tag.toLowerCase());
+}
+
 function priceStats(prices: number[]) {
   if (!prices.length) {
     return {
@@ -361,21 +345,21 @@ function priceStats(prices: number[]) {
   };
 }
 
-function confidenceFor(soldCount: number, comps: RawComp[]): Confidence {
-  if (soldCount >= 8) return "high";
-  if (soldCount >= 3) return "medium";
-  if (comps.length > 0) return "low";
+function confidenceFor(comps: RawComp[]): Confidence {
+  if (comps.length >= 8) return "high";
+  if (comps.length >= 3) return "medium";
   return "low";
-}
-
-function sourceFor(soldComps: RawComp[], activeComps: RawComp[]): ApiSource {
-  if (soldComps.length > 0 && activeComps.length > 0) return "mixed";
-  if (soldComps.length > 0) return "sold";
-  return "active";
 }
 
 function cleanSearchPart(value: string | null) {
   return cleanQueryText(value ?? "").slice(0, 80);
+}
+
+function normalizeCardNumber(value: string) {
+  return cleanQueryText(value)
+    .replace(/^#+/, "")
+    .replace(/\s+/g, "")
+    .toLowerCase();
 }
 
 function cleanQueryText(value: string) {
@@ -392,10 +376,12 @@ function cleanQueryText(value: string) {
 function normalizeFields(fields: CardFields): CardFields {
   return {
     brand: normalizeEmptyish(fields.brand),
+    cardNumber: normalizeCardNumber(normalizeEmptyish(fields.cardNumber)),
     grade: normalizeEmptyish(fields.grade),
     parallel: normalizeEmptyish(fields.parallel),
     player: cleanPlayer(fields.player),
     set: normalizeEmptyish(fields.set),
+    tags: normalizeEmptyish(fields.tags),
     year: normalizeEmptyish(fields.year),
   };
 }

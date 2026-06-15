@@ -557,7 +557,7 @@ export default function Home() {
 
       {activeSection === "Collection" ? (
         <>
-      <section className="mx-auto max-w-[1440px] px-4 py-4 sm:px-6">
+      <section className="mx-auto max-w-[1680px] px-4 py-4 sm:px-6">
         <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.08),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.055),rgba(255,255,255,0.015))] p-4 shadow-2xl sm:p-5">
           <div
             className="absolute inset-x-0 top-0 h-1"
@@ -596,7 +596,7 @@ export default function Home() {
                   label="Collection value"
                   value={formatMoney(inventoryValue)}
                 />
-                <HeroMetric label="Cost basis" value={formatMoney(costBasis)} />
+                <HeroMetric label="Total spent" value={formatMoney(costBasis)} />
                 <HeroMetric label="Sold" value={formatMoney(soldValue)} />
               </div>
             </div>
@@ -643,7 +643,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-[1440px] gap-4 px-4 pb-8 sm:px-6 xl:grid-cols-[230px_minmax(0,1fr)_320px]">
+      <section className="mx-auto grid max-w-[1680px] gap-4 px-4 pb-8 sm:px-6 xl:grid-cols-[190px_minmax(0,1fr)_300px]">
         <aside className={`h-fit max-h-[calc(100vh-5.5rem)] overflow-y-auto rounded-xl border border-white/10 ${activeTheme.panel} p-3 shadow-xl lg:sticky lg:top-20`}>
           <RailSection title="Find">
             <input
@@ -736,10 +736,17 @@ export default function Home() {
                   </p>
                   <div className="grid grid-cols-6 gap-1.5">
                     {accentPalette.map((color) => (
-                      <span
+                      <button
                         key={color}
-                        className="h-6 rounded-md border border-white/15"
+                        type="button"
+                        onClick={() => selectedCard ? updateCard(selectedCard.id, { color }) : undefined}
+                        className={`h-6 rounded-md border transition ${
+                          selectedCard?.color === color
+                            ? "border-white shadow-[0_0_0_2px_rgba(255,85,51,0.25)]"
+                            : "border-white/15 hover:border-white/40"
+                        }`}
                         style={{ backgroundColor: color }}
+                        aria-label={`Use ${color} accent`}
                       />
                     ))}
                   </div>
@@ -1184,7 +1191,7 @@ function displayModeClasses(mode: DisplayMode) {
     return "grid gap-4";
   }
 
-  return "grid auto-rows-fr justify-center gap-4 [grid-template-columns:repeat(auto-fit,minmax(220px,260px))]";
+  return "grid auto-rows-fr gap-4 [grid-template-columns:repeat(auto-fill,minmax(190px,1fr))]";
 }
 
 function CollectionQuickNav({
@@ -1787,7 +1794,7 @@ function InsightsHome({
 
       <aside className="grid h-fit gap-4">
         <DashboardPanel title="Portfolio">
-          <MiniStat label="Cost basis" value={formatMoney(costBasis)} />
+          <MiniStat label="Total spent" value={formatMoney(costBasis)} />
           <MiniStat label="Sold total" value={formatMoney(soldValue)} />
           <MiniStat label="Wishlist" value={chaseCards.length.toString()} />
         </DashboardPanel>
@@ -1805,7 +1812,7 @@ function InsightsHome({
           ))}
         </DashboardPanel>
         <DashboardPanel title="Market movers">
-          {["Recent sales import", "Price alerts", "eBay sold comps", "Prospect watchlist"].map((item) => (
+          {["Listing import", "Price alerts", "eBay ask comps", "Prospect watchlist"].map((item) => (
             <div key={item} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-bold text-slate-300">
               {item}
             </div>
@@ -2567,7 +2574,7 @@ function CollectorWorkbench({
                     {card.year} {card.brand} {card.set}
                   </p>
                   <div className="mt-3 grid grid-cols-2 gap-2">
-                    <LookupLink href={soldSearchUrl(card)} label="eBay sold" />
+                    <LookupLink href={ebaySearchUrl(card)} label="eBay listings" />
                     <LookupLink href={certLookupUrl(card)} label="Cert lookup" />
                   </div>
                 </div>
@@ -2715,7 +2722,7 @@ function CardResearchPanel({ card }: { card: Card }) {
         Lookup links
       </p>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <LookupLink href={soldSearchUrl(card)} label="eBay sold" />
+        <LookupLink href={ebaySearchUrl(card)} label="eBay listings" />
         <LookupLink href={certLookupUrl(card)} label="Cert lookup" />
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
@@ -2729,7 +2736,7 @@ function CardResearchPanel({ card }: { card: Card }) {
               eBay market scan
             </p>
             <p className="mt-1 text-xs font-bold leading-5 text-slate-400">
-              Active listing average now, sold comps once Marketplace Insights is enabled.
+              Current asking prices from active eBay listings.
             </p>
           </div>
           <button
@@ -3550,7 +3557,7 @@ function CardTile({
           : "flex flex-col"
       }`}
     >
-      <div className={`relative overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] ${mode === "Showcase" ? "h-[320px]" : "h-[230px]"}`}>
+      <div className={`relative overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] ${mode === "Showcase" ? "h-[320px]" : "h-[190px]"}`}>
         {card.status === "For Trade" ? (
           <div className="pointer-events-none absolute right-2 top-2 z-20 rounded-full bg-[#ff5533] px-2 py-1 text-[9px] font-black text-white shadow-[0_0_20px_rgba(255,85,51,0.25)]">
             FOR TRADE
@@ -3566,7 +3573,11 @@ function CardTile({
         <TileCardImage
           card={card}
           accent={accent}
-          sizes={mode === "Showcase" ? "320px" : "260px"}
+          sizes={mode === "Showcase" ? "320px" : "220px"}
+        />
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-1"
+          style={{ backgroundColor: card.color || accent }}
         />
       </div>
       <div
@@ -4012,8 +4023,8 @@ function cardSearchText(card: Card) {
     .join(" ");
 }
 
-function soldSearchUrl(card: Card) {
-  return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(cardSearchText(card))}&LH_Sold=1&LH_Complete=1`;
+function ebaySearchUrl(card: Card) {
+  return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(cardSearchText(card))}`;
 }
 
 function certLookupUrl(card: Card) {

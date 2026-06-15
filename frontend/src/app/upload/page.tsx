@@ -205,6 +205,53 @@ export default function UploadPage() {
     setStep("Review");
   }
 
+  function reparseDraftTitle() {
+    if (!draft) return;
+
+    const identified = identifyFromTitle(draft.fileName);
+    setDraft((current) => {
+      if (!current) return current;
+      const nextConfidence = confidenceFromIdentifier(identified);
+
+      return {
+        ...current,
+        brand: identified.brand.value || current.brand,
+        cardNumber: identified.cardNumber.value || current.cardNumber,
+        certNumber: identified.certNumber.value || current.certNumber,
+        fieldConfidence: {
+          ...current.fieldConfidence,
+          ...nextConfidence,
+        },
+        grade: identified.grade.value || current.grade,
+        gradingCompany: identified.gradingCompany.value || current.gradingCompany,
+        parallel: identified.parallel.value || current.parallel,
+        player: identified.player.value || current.player,
+        set: cleanSetForComps(identified.set.value || current.set),
+        sport: normalizeSport(identified.sport.value || current.sport),
+        tags: normalizeTags([...current.tags, ...identified.tags]),
+        team: identified.team.value || current.team,
+        year: identified.year.value || current.year,
+      };
+    });
+  }
+
+  function normalizeDraftForExactComps() {
+    if (!draft) return;
+
+    updateDraft({
+      cardNumber: draft.cardNumber.replace(/^#+/, "").trim(),
+      grade: draft.grade || "Raw",
+      parallel: /^(base|none|n\/a|na|not specified|unknown)$/i.test(draft.parallel.trim())
+        ? ""
+        : draft.parallel.trim(),
+      set: cleanSetForComps(draft.set),
+    });
+  }
+
+  function markDraftAsBase() {
+    updateDraft({ parallel: "" });
+  }
+
   function updateDraft(updates: Partial<CardDraft>) {
     setDraft((current) => {
       if (!current) return current;
@@ -321,18 +368,57 @@ export default function UploadPage() {
           <StepRail activeStep={step} />
         </header>
 
-        <section className="relative mt-5 overflow-hidden rounded-2xl border border-white/10 bg-[#151b24] p-5 shadow-2xl">
+        <section className="relative mt-5 overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_12%_0%,rgba(255,85,51,0.22),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(56,213,255,0.14),transparent_26%),linear-gradient(135deg,#151b24,#0d111a)] p-5 shadow-2xl">
           <div className="absolute inset-x-0 top-0 h-1 bg-[#ff5533] shadow-[0_0_30px_rgba(255,85,51,0.15)]" />
-          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-            CardRoster intake
-          </p>
-          <h1 className="mt-2 text-3xl font-black text-white sm:text-5xl">
-            Add a card to the vault.
-          </h1>
-          <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-300">
-            Import, identify, compare recent sales, and save a card that feels
-            like a collectible object.
-          </p>
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+                CardRoster intake
+              </p>
+              <h1 className="mt-2 text-3xl font-black text-white sm:text-5xl">
+                Add a card to the vault.
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-300">
+                Import, identify, compare current listings, and save a card that feels
+                like a collectible object.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <HeroPill label="Exact identity" value="Player + set + #" />
+                <HeroPill label="Market" value="Current asks" />
+                <HeroPill label="Storage" value="Compressed" />
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  Market preview
+                </p>
+                <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-amber-100">
+                  active asks
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  ["Exact", "$6"],
+                  ["Median", "$8"],
+                  ["High", "$15"],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-white/10 bg-[#0d111a] p-3">
+                    <p className="text-lg font-black text-emerald-300">{value}</p>
+                    <p className="mt-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 grid gap-2">
+                {["Set match", "Card number", "Parallel check"].map((item) => (
+                  <div key={item} className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+                    <span className="text-xs font-black text-slate-300">{item}</span>
+                    <span className="size-2 rounded-full bg-emerald-400" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </section>
 
         {message ? (
@@ -468,6 +554,13 @@ export default function UploadPage() {
                   </Field>
                 </div>
               </FieldGroup>
+
+              <IdentityRepairPanel
+                draft={draft}
+                onBase={markDraftAsBase}
+                onNormalize={normalizeDraftForExactComps}
+                onReparse={reparseDraftTitle}
+              />
 
               <FieldGroup title="Condition">
                 <PillRow
@@ -665,6 +758,14 @@ function StepRail({ activeStep }: { activeStep: Step }) {
   );
 }
 
+function HeroPill({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
+      {label}: <span className="text-white">{value}</span>
+    </span>
+  );
+}
+
 function InputOption({
   body,
   children,
@@ -681,9 +782,10 @@ function InputOption({
   return (
     <article
       onClick={onClick}
-      className="min-h-80 rounded-2xl border border-white/10 bg-[#151b24] p-5 shadow-2xl transition hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)]"
+      className="group relative min-h-80 overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(145deg,#151b24,#0d111a)] p-5 shadow-2xl transition hover:-translate-y-1 hover:border-[#ff5533]/50 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)]"
     >
-      <div className="grid size-16 place-items-center rounded-2xl border border-white/10 bg-[#0d111a] text-sm font-black text-[#ff5533] shadow-[0_0_30px_rgba(255,85,51,0.15)]">
+      <div className="absolute inset-x-0 top-0 h-1 bg-[#ff5533] opacity-0 transition group-hover:opacity-100" />
+      <div className="grid size-16 place-items-center rounded-2xl border border-white/10 bg-[#ff5533]/10 text-sm font-black text-[#ff5533] shadow-[0_0_30px_rgba(255,85,51,0.15)]">
         {icon}
       </div>
       <h2 className="mt-5 text-2xl font-black text-white">{title}</h2>
@@ -748,6 +850,69 @@ function ConfidenceBadge({ confidence }: { confidence: FieldConfidence }) {
   );
 }
 
+function IdentityRepairPanel({
+  draft,
+  onBase,
+  onNormalize,
+  onReparse,
+}: {
+  draft: CardDraft;
+  onBase: () => void;
+  onNormalize: () => void;
+  onReparse: () => void;
+}) {
+  const exactQuery = [
+    draft.year,
+    cleanSetForComps(draft.set || draft.brand),
+    draft.player,
+    draft.cardNumber ? `#${draft.cardNumber.replace(/^#+/, "")}` : "",
+    draft.parallel,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <section className="rounded-xl border border-[#ff5533]/20 bg-[#ff5533]/[0.06] p-4 shadow-[0_0_30px_rgba(255,85,51,0.08)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[#ffb199]">
+            Exact match controls
+          </p>
+          <p className="mt-1 truncate text-sm font-black text-white">
+            {exactQuery || "Fill player, year, set, and card number"}
+          </p>
+          <p className="mt-1 text-xs font-bold leading-5 text-slate-400">
+            Current listings are filtered by set, card number, and parallel before pricing.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onNormalize}
+            className="h-9 rounded-lg bg-[#ff5533] px-3 text-xs font-black text-white hover:brightness-110"
+          >
+            Normalize
+          </button>
+          <button
+            type="button"
+            onClick={onBase}
+            className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10"
+          >
+            Base card
+          </button>
+          <button
+            type="button"
+            onClick={onReparse}
+            className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10"
+          >
+            Re-read title
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function PillRow({
   items,
   onChange,
@@ -799,7 +964,7 @@ function TagToggles({
               onClick={() => onChange({ tags: toggleTag(draft.tags, tag) })}
               className={`h-9 rounded-full px-3 text-xs font-black transition ${
                 active
-                  ? "bg-white text-[#0d111a]"
+                  ? "bg-[#ff5533] text-white shadow-[0_0_30px_rgba(255,85,51,0.15)]"
                   : "border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
               }`}
             >
@@ -844,7 +1009,7 @@ function StyleControls({
               type="button"
               onClick={() => onChange({ color })}
               className={`size-8 rounded-full border ${
-                draft.color === color ? "border-white" : "border-white/10"
+                draft.color === color ? "border-white shadow-[0_0_0_3px_rgba(255,85,51,0.25)]" : "border-white/10"
               }`}
               style={{ backgroundColor: color }}
               aria-label={`Use ${color}`}
@@ -1099,6 +1264,13 @@ function normalizeFieldConfidence(value: unknown): Record<string, FieldConfidenc
 function normalizeTags(values: unknown): CardTag[] {
   if (!Array.isArray(values)) return [];
   return values.filter((value): value is CardTag => cardTags.includes(value as CardTag));
+}
+
+function cleanSetForComps(value: string) {
+  return value
+    .replace(/\b(19[8-9]\d|20[0-3]\d)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeSport(value: string) {

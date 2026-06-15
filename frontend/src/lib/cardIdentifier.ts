@@ -92,7 +92,7 @@ function fieldsFromAspects(aspects: Record<string, string>): Record<FieldName, I
     player: aspectField(
       cleanPlayerName(firstAspect(aspects, ["Player/Athlete", "Player", "Athlete"])),
     ),
-    set: aspectField(firstAspect(aspects, ["Set", "Product"])),
+    set: aspectField(cleanSetName(firstAspect(aspects, ["Set", "Product"]))),
     sport: aspectField(firstAspect(aspects, ["Sport"])),
     team: aspectField(firstAspect(aspects, ["Team"])),
     year: aspectField(firstAspect(aspects, ["Season", "Year", "Year Manufactured"])),
@@ -191,6 +191,13 @@ function cleanAspectValue(value: string) {
   return /^(none|n\/a|na|null|undefined|not specified|unknown)$/i.test(clean)
     ? ""
     : clean;
+}
+
+function cleanSetName(value: string) {
+  return cleanAspectValue(value)
+    .replace(/\b(19[8-9]\d|20[0-3]\d)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeAspectGrade(grader: string, grade: string) {

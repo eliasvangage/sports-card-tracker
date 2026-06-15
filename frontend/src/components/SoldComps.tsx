@@ -4,14 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 
 type SoldCompsCard = {
   brand?: string;
+  cardNumber?: string;
   grade?: string;
   parallel?: string;
   player?: string;
   set?: string;
+  tags?: string[];
   year?: string;
 };
 
-type CompSource = "sold" | "active";
+type CompSource = "active";
 type Confidence = "high" | "medium" | "low";
 
 type SoldComp = {
@@ -40,9 +42,10 @@ type SoldCompsResponse = {
   totalFound: number;
   outliersTrimmed: number;
   confidence: Confidence;
-  source: "sold" | "active" | "mixed";
+  source: "active";
   query: string;
   comps: SoldComp[];
+  filteredOut?: number;
   nearMatches: NearMatch[];
 };
 
@@ -66,17 +69,19 @@ export function SoldComps({
 
     for (const [key, value] of Object.entries({
       brand: card.brand,
+      cardNumber: card.cardNumber,
       grade: card.grade && card.grade !== "Raw" ? card.grade : "",
       parallel: card.parallel,
       player: card.player,
       set: card.set,
+      tags: card.tags?.join(","),
       year: card.year,
     })) {
       if (value?.trim()) params.set(key, value.trim());
     }
 
     return params.toString();
-  }, [card.brand, card.grade, card.parallel, card.player, card.set, card.year]);
+  }, [card.brand, card.cardNumber, card.grade, card.parallel, card.player, card.set, card.tags, card.year]);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,110 +139,206 @@ export function SoldComps({
   }, [canFetch, queryString]);
 
   return (
-    <section className="rounded-xl border border-white/10 bg-[#151b24] p-4 shadow-2xl">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-            Recent sales
-          </p>
-          <p className="mt-1 max-w-full truncate text-xs font-bold text-slate-500">
-            {data?.query ?? "Waiting for card details"}
-          </p>
+    <section className="overflow-hidden rounded-xl border border-white/10 bg-[#151b24] shadow-2xl">
+      <div className="border-b border-white/10 bg-[radial-gradient(circle_at_10%_0%,rgba(255,85,51,0.18),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.015))] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+              Current market
+            </p>
+            <p className="mt-1 max-w-full truncate text-xs font-bold text-slate-400">
+              {data?.query ?? "Waiting for card details"}
+            </p>
+          </div>
+          {data ? <ConfidenceBadge confidence={data.confidence} /> : null}
         </div>
-        {data ? <ConfidenceBadge confidence={data.confidence} /> : null}
+        {data ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <MarketChip label="Exact listings" value={data.samples.toString()} />
+            <MarketChip label="Filtered" value={(data.filteredOut ?? 0).toString()} />
+            <MarketChip label="Source" value="eBay active" />
+          </div>
+        ) : null}
       </div>
 
-      {!canFetch ? (
-        <EmptyMessage
-          card={card}
-          text="Add at least player and year to scan sold eBay comps."
-        />
-      ) : isLoading ? (
-        <CompsSkeleton compact={compact} />
-      ) : error ? (
-        <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold leading-5 text-red-100">
-          {error}
-        </div>
-      ) : data && data.samples > 0 ? (
-        <>
-          <div className="mt-4 rounded-2xl border border-white/10 bg-[#0d111a] p-4 shadow-[0_0_30px_rgba(255,85,51,0.10)]">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-4xl font-black text-emerald-300">
-                  {formatMoney(data.avgPrice)}
-                </p>
-                <p className="mt-2 text-xs font-bold text-slate-400">
-                  median {formatMoney(data.medianPrice)} | low{" "}
-                  {formatMoney(data.lowPrice)} | high {formatMoney(data.highPrice)}
-                </p>
-                <p className="mt-1 text-xs font-bold text-slate-500">
-                  {data.samples} {data.source === "active" ? "active listing" : "sold comp"}
-                  {data.samples === 1 ? "" : "s"}
-                </p>
-              </div>
-              <SourceBadge source={data.source} confidence={data.confidence} />
-            </div>
-            {data.source === "active" ? (
-              <p className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-100">
-                Active listings only - no recent sales found.
-              </p>
-            ) : data.confidence === "low" ? (
-              <p className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-100">
-                Estimated - fewer than 3 comps found.
-              </p>
-            ) : null}
+      <div className="p-4">
+        {!canFetch ? (
+          <EmptyMessage
+            card={card}
+            text="Add at least player and year to scan current eBay listings."
+          />
+        ) : isLoading ? (
+          <CompsSkeleton compact={compact} />
+        ) : error ? (
+          <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold leading-5 text-red-100">
+            {error}
           </div>
+        ) : data && data.samples > 0 ? (
+          <MarketBoard
+            card={card}
+            compact={compact}
+            data={data}
+            onValueAccepted={onValueAccepted}
+          />
+        ) : (
+          <EmptyMessage card={card} text="No exact current listings found for this card." />
+        )}
+      </div>
+    </section>
+  );
+}
 
-          <button
-            type="button"
-            onClick={() => onValueAccepted(data.avgPrice)}
-            disabled={data.source === "active"}
-            className="mt-3 h-10 w-full rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {data.source === "active" ? "Active listings only" : "Use as estimated value"}
-          </button>
+function MarketBoard({
+  card,
+  compact,
+  data,
+  onValueAccepted,
+}: {
+  card: SoldCompsCard;
+  compact: boolean;
+  data: SoldCompsResponse;
+  onValueAccepted: (value: number) => void;
+}) {
+  const visibleComps = data.comps.slice(0, compact ? 3 : 6);
 
-          <div className="mt-4 grid gap-2">
-            {data.comps.slice(0, compact ? 3 : 5).map((comp) => (
-              <CompRow key={`${comp.url}-${comp.price}`} comp={comp} compact={compact} />
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+        <div className="rounded-2xl border border-white/10 bg-[#0d111a] p-4 shadow-[0_0_30px_rgba(255,85,51,0.10)]">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+            Average ask
+          </p>
+          <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
+            <p className="text-4xl font-black text-emerald-300">
+              {formatMoney(data.avgPrice)}
+            </p>
+            <SourceBadge />
+          </div>
+          <p className="mt-2 text-xs font-bold text-slate-400">
+            median {formatMoney(data.medianPrice)} | low {formatMoney(data.lowPrice)} | high {formatMoney(data.highPrice)}
+          </p>
+          {data.confidence === "low" ? (
+            <p className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-100">
+              Thin market - fewer than 3 exact current listings found.
+            </p>
+          ) : null}
+        </div>
+        <div className="grid grid-cols-3 gap-2 sm:w-72">
+          <MiniMetric label="Listings" value={data.samples.toString()} />
+          <MiniMetric label="Loose" value={(data.filteredOut ?? 0).toString()} />
+          <MiniMetric label="Trimmed" value={data.outliersTrimmed.toString()} />
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onValueAccepted(data.avgPrice)}
+        className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
+      >
+        Use average ask as estimate
+      </button>
+
+      {!compact ? (
+        <div className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
+          {visibleComps.map((comp) => (
+            <CompCard key={`${comp.url}-${comp.price}`} comp={comp} />
+          ))}
+        </div>
+      ) : null}
+
+      <div className="grid gap-2">
+        {visibleComps.map((comp) => (
+          <CompRow key={`${comp.url}-${comp.price}`} comp={comp} compact={compact} />
+        ))}
+      </div>
+
+      {data.nearMatches.length ? (
+        <details className="rounded-xl border border-white/10 bg-[#0d111a] p-3">
+          <summary className="cursor-pointer list-none text-xs font-black text-slate-300">
+            {data.nearMatches.length} outlier{data.nearMatches.length === 1 ? "" : "s"} removed
+          </summary>
+          <div className="mt-3 grid gap-2">
+            {data.nearMatches.map((match) => (
+              <a
+                key={`${match.url}-${match.price}`}
+                href={match.url}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-xl border border-white/10 bg-white/[0.03] p-3 hover:bg-white/[0.06]"
+              >
+                <div className="flex justify-between gap-3">
+                  <p className="truncate text-xs font-black text-white">
+                    {trimTitle(match.title)}
+                  </p>
+                  <p className="text-xs font-black text-white">
+                    {formatMoney(match.price)}
+                  </p>
+                </div>
+                <p className="mt-1 text-[10px] font-bold text-slate-500">
+                  {match.reason === "outlier_high" ? "Unusually high" : "Unusually low"} ({formatMoney(match.price)})
+                </p>
+              </a>
             ))}
           </div>
+        </details>
+      ) : null}
 
-          {data.nearMatches.length ? (
-            <details className="mt-4 rounded-xl border border-white/10 bg-[#0d111a] p-3">
-              <summary className="cursor-pointer list-none text-xs font-black text-slate-300">
-                {data.nearMatches.length} outlier{data.nearMatches.length === 1 ? "" : "s"} removed
-              </summary>
-              <div className="mt-3 grid gap-2">
-                {data.nearMatches.map((match) => (
-                  <a
-                    key={`${match.url}-${match.price}`}
-                    href={match.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-xl border border-white/10 bg-white/[0.03] p-3 hover:bg-white/[0.06]"
-                  >
-                    <div className="flex justify-between gap-3">
-                      <p className="truncate text-xs font-black text-white">
-                        {trimTitle(match.title)}
-                      </p>
-                      <p className="text-xs font-black text-white">
-                        {formatMoney(match.price)}
-                      </p>
-                    </div>
-                    <p className="mt-1 text-[10px] font-bold text-slate-500">
-                      {match.reason === "outlier_high" ? "Unusually high" : "Unusually low"} ({formatMoney(match.price)})
-                    </p>
-                  </a>
-                ))}
-              </div>
-            </details>
-          ) : null}
-        </>
-      ) : (
-        <EmptyMessage card={card} text="No recent sales found for this card." />
-      )}
-    </section>
+      <a
+        href={ebaySearchUrl(card)}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
+      >
+        Open eBay search
+      </a>
+    </div>
+  );
+}
+
+function MarketChip({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
+      {label}: <span className="text-white">{value}</span>
+    </span>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-[#0d111a] p-3">
+      <p className="text-lg font-black text-white">{value}</p>
+      <p className="mt-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+    </div>
+  );
+}
+
+function CompCard({ comp }: { comp: SoldComp }) {
+  return (
+    <a
+      href={comp.url}
+      target="_blank"
+      rel="noreferrer"
+      className="group w-44 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] transition hover:-translate-y-0.5 hover:border-white/20"
+    >
+      <div className="relative h-44 bg-black/30">
+        {comp.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={comp.imageUrl} alt="" className="h-full w-full object-contain" />
+        ) : (
+          <div className="grid h-full place-items-center text-xs font-black text-slate-500">No image</div>
+        )}
+        <span className="absolute bottom-2 left-2 rounded bg-white px-2 py-0.5 text-[10px] font-black text-[#111722]">
+          eBay
+        </span>
+      </div>
+      <div className="p-3">
+        <p className="line-clamp-2 min-h-8 text-[11px] font-black leading-4 text-white">
+          {comp.title}
+        </p>
+        <p className="mt-2 text-sm font-black text-emerald-300">{formatMoney(comp.price)}</p>
+        <p className="mt-1 text-[10px] font-bold text-slate-500">{formatDate(comp.endDate)}</p>
+      </div>
+    </a>
   );
 }
 
@@ -262,7 +363,7 @@ function CompRow({ compact, comp }: { compact: boolean; comp: SoldComp }) {
           ) : null}
           {comp.source === "active" ? (
             <span className="ml-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[9px] text-amber-100">
-              active
+              listing
             </span>
           ) : null}
         </p>
@@ -273,7 +374,7 @@ function CompRow({ compact, comp }: { compact: boolean; comp: SoldComp }) {
 }
 
 function EmptyMessage({ card, text }: { card: SoldCompsCard; text: string }) {
-  const href = soldSearchUrl(card);
+  const href = ebaySearchUrl(card);
 
   return (
     <div className="mt-4 rounded-xl border border-white/10 bg-[#0d111a] p-4 text-xs font-bold leading-5 text-slate-300">
@@ -285,7 +386,7 @@ function EmptyMessage({ card, text }: { card: SoldCompsCard; text: string }) {
           rel="noreferrer"
           className="mt-3 inline-flex h-10 items-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
         >
-          Try searching eBay manually -&gt;
+          Search eBay manually -&gt;
         </a>
       ) : null}
     </div>
@@ -306,30 +407,12 @@ function ConfidenceBadge({ confidence }: { confidence: Confidence }) {
   );
 }
 
-function SourceBadge({
-  confidence,
-  source,
-}: {
-  confidence: Confidence;
-  source: SoldCompsResponse["source"];
-}) {
-  if (source === "active") {
-    return (
-      <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-100">
-        Active only
-      </span>
-    );
-  }
-
-  if (source === "mixed") {
-    return (
-      <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-100">
-        Mixed
-      </span>
-    );
-  }
-
-  return <ConfidenceBadge confidence={confidence} />;
+function SourceBadge() {
+  return (
+    <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-100">
+      Current ask
+    </span>
+  );
 }
 
 function CompsSkeleton({ compact }: { compact: boolean }) {
@@ -350,12 +433,13 @@ function trimTitle(value: string) {
   return value.length > 40 ? `${value.slice(0, 40)}...` : value;
 }
 
-function soldSearchUrl(card: SoldCompsCard) {
+function ebaySearchUrl(card: SoldCompsCard) {
   const query = [
     card.year,
     card.brand,
     card.set,
     card.player,
+    card.cardNumber ? `#${card.cardNumber}` : "",
     card.parallel,
     card.grade && card.grade !== "Raw" ? card.grade : "",
   ]
@@ -363,7 +447,7 @@ function soldSearchUrl(card: SoldCompsCard) {
     .join(" ");
 
   return query
-    ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&LH_Sold=1&LH_Complete=1`
+    ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}`
     : "";
 }
 
