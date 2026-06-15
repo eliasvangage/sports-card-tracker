@@ -10,7 +10,7 @@ type ThemeName = "Arena" | "Chrome" | "Hardwood";
 type DisplayMode = "Grid" | "Showcase" | "Compact";
 type BorderStyle = "Soft" | "Chrome" | "Glow";
 type FrameStyle = "Card" | "Gradient" | "Sunset" | "Stand";
-type SortMode = "Newest" | "Player" | "Year";
+type SortMode = "Newest" | "Player" | "Year" | "Value";
 type CardTag = "Rookie" | "Auto" | "Patch" | "Numbered" | "Favorite";
 type StudioTab = "Details" | "Market" | "Display";
 type AppSection =
@@ -278,6 +278,7 @@ export default function Home() {
     return matches.toSorted((a, b) => {
       if (sortMode === "Player") return a.player.localeCompare(b.player);
       if (sortMode === "Year") return b.year.localeCompare(a.year);
+      if (sortMode === "Value") return cardValue(b) - cardValue(a);
       return 0;
     });
   }, [allCards, collection, query, sortMode, sport, status, tagFilter]);
@@ -564,7 +565,7 @@ export default function Home() {
             className="absolute inset-x-0 top-0 h-1"
             style={{ backgroundColor: activeTheme.accent }}
           />
-          <div className="relative grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch">
+          <div className="relative grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-stretch">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-white/55">
                 Collection
@@ -578,7 +579,7 @@ export default function Home() {
               <div className="mt-5 flex flex-wrap gap-2">
                 <Link
                   href="/upload"
-                  className="inline-flex h-10 items-center rounded-md px-4 text-sm font-black text-white shadow-lg transition hover:brightness-110"
+                  className="inline-flex h-10 items-center rounded-lg px-4 text-sm font-black text-white shadow-lg transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
                   style={{ backgroundColor: activeTheme.accent }}
                 >
                   Upload cards
@@ -586,7 +587,7 @@ export default function Home() {
                 <button
                   onClick={() => setShowcaseOpen(true)}
                   disabled={allCards.length === 0}
-                  className="inline-flex h-10 items-center rounded-md border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="inline-flex h-10 items-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 transition duration-200 hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Showcase
                 </button>
@@ -602,39 +603,54 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-black/30 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+            <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0d111a] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-                  Vault settings
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  Cover shelf
                 </p>
-                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
-                  Local
-                </span>
+                <input
+                  value={collectionName}
+                  onChange={(event) => setCollectionName(event.target.value)}
+                  className="h-8 max-w-36 rounded-full border border-white/10 bg-white/5 px-3 text-xs font-black text-white outline-none focus:border-white/40"
+                  aria-label="Collection name"
+                />
               </div>
-              <label className="mt-4 block text-xs font-bold text-slate-200">
-                Collection name
-              </label>
-              <input
-                value={collectionName}
-                onChange={(event) => setCollectionName(event.target.value)}
-                className="mt-1.5 h-9 w-full rounded-md border border-white/10 bg-black/30 px-3 text-sm text-white outline-none focus:border-white/40"
-              />
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <MiniStat label="Cards" value={allCards.length.toString()} />
-                <MiniStat label="Vaults" value={(collections.length - 1).toString()} />
-                <MiniStat label="Favorites" value={(favoriteCards.length + (grailCard ? 1 : 0)).toString()} />
-                <MiniStat label="Chases" value={chaseCards.length.toString()} />
+              <div className="mt-5 flex min-h-40 items-end justify-center gap-0">
+                {(favoriteCards.length ? favoriteCards : allCards).slice(0, 3).map((card, index) => (
+                  <button
+                    key={card.id}
+                    type="button"
+                    onClick={() => setSelectedId(card.id)}
+                    className={`relative h-40 w-28 overflow-visible rounded-xl transition duration-200 hover:-translate-y-2 ${
+                      index === 0 ? "z-20 rotate-[-7deg]" : index === 1 ? "z-30 -mx-2 h-48 w-32" : "z-10 rotate-[7deg]"
+                    }`}
+                  >
+                    <CardPreview
+                      accent={activeTheme.accent}
+                      borderStyle={card.borderStyle ?? borderStyle}
+                      card={card}
+                      frameStyle={card.frameStyle ?? frameStyle}
+                      imageFit="cover"
+                      tight
+                    />
+                  </button>
+                ))}
+                {allCards.length === 0 ? (
+                  <div className="grid h-40 w-28 place-items-center rounded-xl border border-dashed border-white/15 bg-white/[0.03] text-center text-xs font-bold text-slate-500">
+                    Add cards
+                  </div>
+                ) : null}
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="mt-5 grid grid-cols-2 gap-2">
                 <button
                   onClick={() => setActiveSection("Profile")}
-                  className="h-9 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10"
+                  className="h-9 rounded-lg border border-white/10 bg-white/5 text-xs font-black text-slate-200 transition hover:-translate-y-0.5 hover:bg-white/10"
                 >
                   Profile
                 </button>
                 <button
                   onClick={() => setActiveSection("Feed")}
-                  className="h-9 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10"
+                  className="h-9 rounded-lg border border-white/10 bg-white/5 text-xs font-black text-slate-200 transition hover:-translate-y-0.5 hover:bg-white/10"
                 >
                   Feed
                 </button>
@@ -808,15 +824,6 @@ export default function Home() {
             />
           ) : null}
 
-          {allCards.length > 0 ? (
-            <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <GalleryStat label="Shown" value={filteredCards.length.toString()} />
-              <GalleryStat label="Vault" value={collection === "All" ? "All" : collection} />
-              <GalleryStat label="Sort" value={sortMode} />
-              <GalleryStat label="View" value={displayMode} />
-            </div>
-          ) : null}
-
           <div className="mb-3 flex flex-col justify-between gap-3 rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(21,27,38,0.92),rgba(8,12,18,0.92))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:flex-row sm:items-center">
             <div>
               <p className="text-[11px] font-black uppercase tracking-[0.22em] text-white/55">
@@ -833,11 +840,12 @@ export default function Home() {
               <select
                 value={sortMode}
                 onChange={(event) => setSortMode(event.target.value as SortMode)}
-                className="h-9 rounded-md border border-white/10 bg-[#111722] px-3 text-xs font-black text-white outline-none"
+                className="h-9 rounded-lg border border-white/10 bg-[#111722] px-3 text-xs font-black text-white outline-none transition focus:border-white/40"
               >
                 <option>Newest</option>
                 <option>Player</option>
                 <option>Year</option>
+                <option>Value</option>
               </select>
               {(["Grid", "Showcase", "Compact"] as DisplayMode[]).map((mode) => (
                 <button
@@ -846,7 +854,7 @@ export default function Home() {
                   className={`h-9 rounded-lg px-3 text-xs font-black transition ${
                     displayMode === mode
                       ? "bg-[#ff5533] text-white shadow-[0_0_30px_rgba(255,85,51,0.15)]"
-                      : "border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+                      : "border border-white/10 bg-white/5 text-slate-300 hover:-translate-y-0.5 hover:bg-white/10"
                   }`}
                 >
                   {mode}
@@ -1189,7 +1197,7 @@ function displayModeClasses(mode: DisplayMode) {
   }
 
   if (mode === "Showcase") {
-    return "grid gap-4";
+    return "grid gap-5";
   }
 
   return "grid auto-rows-fr gap-5 [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]";
@@ -1591,7 +1599,7 @@ function TradeBrowse({
                 <p className="mt-3 truncate text-lg font-black text-white">{card.player}</p>
                 <p className="mt-1 truncate text-sm font-bold text-sky-200">{card.team}</p>
                 <p className="mt-3 text-sm font-bold leading-6 text-slate-300">
-                  {card.year} {card.brand} {card.set}
+                  {cardSubtitle(card)}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black text-[#111722]">
@@ -2489,7 +2497,7 @@ function PublicFeed({
                       </h3>
                       <p className="mt-2 text-sm font-bold text-sky-200">{card.team}</p>
                       <p className="mt-5 text-base font-black leading-7 text-slate-100">
-                        {card.year} {card.brand} {card.set}
+                        {cardSubtitle(card)}
                       </p>
                       <div className="mt-4 flex flex-wrap gap-2">
                         {[card.collection, card.status, ...(card.tags ?? [])].slice(0, 5).map((item) => (
@@ -2734,7 +2742,7 @@ function CollectorWorkbench({
                   <div className="min-w-0">
                     <p className="truncate text-sm font-black text-white">{card.player}</p>
                     <p className="truncate text-xs font-bold text-slate-500">
-                      {card.year} {card.brand} {card.set}
+                      {cardSubtitle(card)}
                     </p>
                   </div>
                   <GradingDecision card={card} />
@@ -2754,7 +2762,7 @@ function CollectorWorkbench({
                 <div key={card.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
                   <p className="truncate text-sm font-black text-white">{card.player}</p>
                   <p className="mt-1 truncate text-xs font-bold text-slate-500">
-                    {card.year} {card.brand} {card.set}
+                    {cardSubtitle(card)}
                   </p>
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <LookupLink href={ebaySearchUrl(card)} label="eBay listings" />
@@ -3248,17 +3256,6 @@ function DashboardMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function GalleryStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-      <p className="truncate text-sm font-black text-white">{value}</p>
-      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-        {label}
-      </p>
-    </div>
-  );
-}
-
 function SocialStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-white/10 bg-black/20 p-3">
@@ -3506,7 +3503,7 @@ function GrailDisplay({
         </h3>
         <p className="mt-1 text-sm text-slate-400">{card.team}</p>
         <p className="mt-5 max-w-xl text-sm font-bold leading-6 text-slate-200">
-          {card.year} {card.brand} {card.set}
+          {cardSubtitle(card)}
         </p>
         <div className="mt-5 flex flex-wrap gap-2">
           <span className="rounded-full bg-[#ff5533] px-3 py-1 text-[10px] font-black text-white shadow-[0_0_30px_rgba(255,85,51,0.15)]">
@@ -3738,20 +3735,20 @@ function CardTile({
         highlighted ? "ring-1 ring-[#ff5533]/25" : ""
       } ${tileBorderAccentClass(borderStyle)} ${
         mode === "Showcase"
-          ? "grid items-center gap-5 sm:grid-cols-[320px_minmax(0,1fr)]"
+          ? "grid items-center gap-6 p-5 sm:grid-cols-[360px_minmax(0,1fr)]"
           : "flex flex-col"
       }`}
     >
-      <div className={`relative grid place-items-center overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] p-4 ${mode === "Showcase" ? "h-[320px]" : "h-[300px]"}`}>
+      <div className={`relative grid place-items-center overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] p-4 ${mode === "Showcase" ? "h-[380px]" : "h-[300px]"}`}>
         <div
           className={`${frameShellClass(tileFrameStyle)} relative h-full max-h-full aspect-[5/7]`}
           style={frameShellStyle(tileFrameStyle, tileAccent)}
         >
           <div className={`relative h-full overflow-hidden rounded-lg ${imageWindowClass(tileFrameStyle)} ${innerFrameClass(tileFrameStyle)}`}>
-            <TileCardImage
+        <TileCardImage
               card={card}
               accent={accent}
-              sizes={mode === "Showcase" ? "320px" : "300px"}
+              sizes={mode === "Showcase" ? "380px" : "300px"}
             />
           </div>
         </div>
@@ -3763,7 +3760,7 @@ function CardTile({
       <div
         className={
           mode === "Showcase"
-            ? "min-w-0 rounded-xl border border-white/10 bg-black/25 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
+            ? "min-w-0 p-2"
             : "flex flex-1 flex-col pt-4"
         }
       >
@@ -3775,7 +3772,7 @@ function CardTile({
             {card.team || card.sport}
           </p>
         </div>
-        <p className={`${mode === "Showcase" ? "mt-5 text-base leading-7" : "mt-3 line-clamp-2 text-sm leading-5"} font-bold text-slate-100`}>
+        <p className={`${mode === "Showcase" ? "mt-5 text-lg leading-8" : "mt-3 line-clamp-2 text-sm leading-5"} font-bold text-slate-100`}>
           {cardSubtitle(card)}
         </p>
         {mode === "Showcase" && card.notes ? (
@@ -3803,7 +3800,7 @@ function CardTile({
             ) : null}
           </div>
           <div className="mt-3 flex items-center justify-between gap-3">
-            <span className="text-xl font-black text-emerald-300">
+            <span className={`${mode === "Showcase" ? "text-3xl" : "text-xl"} font-black text-emerald-300`}>
               {value ? formatMoney(value) : ""}
             </span>
             <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
@@ -4192,9 +4189,13 @@ function cardSubtitle(card: Card) {
 }
 
 function cleanMetaPart(value?: string) {
-  return (value ?? "")
+  const clean = (value ?? "")
     .replace(/\s+/g, " ")
     .trim();
+
+  return /^(none|n\/a|na|null|undefined|unknown|not specified)$/i.test(clean)
+    ? ""
+    : clean;
 }
 
 function cleanCardNumber(value?: string) {
@@ -4326,19 +4327,14 @@ function StylePicker({
               key={option}
               type="button"
               onClick={() => onChange(option)}
-              className={`grid grid-cols-[44px_minmax(0,1fr)] items-center gap-3 rounded-lg border p-2 text-left transition ${
+              className={`grid grid-cols-[36px_minmax(0,1fr)] items-center gap-3 rounded-lg border p-2 text-left transition duration-200 hover:-translate-y-0.5 ${
                 active
-                  ? "border-[#ff5533]/60 bg-[#ff5533]/10 text-white"
+                  ? "border-[#ff5533]/70 bg-[#ff5533]/12 text-white shadow-[0_0_24px_rgba(255,85,51,0.10)]"
                   : "border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/[0.06]"
               }`}
             >
-              <span className={`h-12 rounded-md ${stylePreviewClass(option)}`} />
-              <span>
-                <span className="block text-xs font-black">{option}</span>
-                <span className="mt-0.5 block text-[10px] font-bold text-slate-500">
-                  {styleDescription(option)}
-                </span>
-              </span>
+              <span className={`h-9 rounded-md ${stylePreviewClass(option)}`} />
+              <span className="block text-sm font-black">{option}</span>
             </button>
           );
         })}
@@ -4354,15 +4350,6 @@ function stylePreviewClass(option: string) {
   if (option === "Chrome") return "border border-cyan-100/40 bg-[linear-gradient(145deg,rgba(255,255,255,0.24),rgba(56,189,248,0.14),rgba(255,255,255,0.04))]";
   if (option === "Glow") return "border border-[#ff5533]/40 bg-[radial-gradient(circle_at_50%_0%,rgba(255,85,51,0.30),rgba(255,255,255,0.04))]";
   return "border border-white/10 bg-[#111722]";
-}
-
-function styleDescription(option: string) {
-  if (option === "Gradient") return "bright collector border";
-  if (option === "Sunset") return "warm color frame";
-  if (option === "Stand") return "display stand";
-  if (option === "Chrome") return "metal finish";
-  if (option === "Glow") return "accent glow";
-  return "clean card edge";
 }
 
 function ColorSwatches({
