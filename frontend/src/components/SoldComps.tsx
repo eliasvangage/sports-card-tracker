@@ -13,22 +13,12 @@ type SoldCompsCard = {
   year?: string;
 };
 
-type CompSource = "active";
-type Confidence = "high" | "medium" | "low";
-
 type SoldComp = {
   condition: string;
   endDate: string;
   imageUrl: string;
   price: number;
-  source: CompSource;
-  title: string;
-  url: string;
-};
-
-type NearMatch = {
-  price: number;
-  reason: "outlier_high" | "outlier_low";
+  source: "active";
   title: string;
   url: string;
 };
@@ -41,12 +31,17 @@ type SoldCompsResponse = {
   samples: number;
   totalFound: number;
   outliersTrimmed: number;
-  confidence: Confidence;
+  confidence: "high" | "medium" | "low";
   source: "active";
   query: string;
   comps: SoldComp[];
   filteredOut?: number;
-  nearMatches: NearMatch[];
+  nearMatches: Array<{
+    price: number;
+    reason: "outlier_high" | "outlier_low";
+    title: string;
+    url: string;
+  }>;
 };
 
 const compsCache = new Map<string, SoldCompsResponse>();
@@ -111,7 +106,7 @@ export function SoldComps({
         const body = await response.json();
 
         if (!response.ok) {
-          throw new Error(body.error ?? "Unable to load eBay comps.");
+          throw new Error(body.error ?? "Unable to load eBay market.");
         }
 
         compsCache.set(queryString, body);
@@ -123,7 +118,7 @@ export function SoldComps({
           setError(
             loadError instanceof Error
               ? loadError.message
-              : "Unable to load eBay comps.",
+              : "Unable to load eBay market.",
           );
         }
       } finally {
@@ -140,32 +135,29 @@ export function SoldComps({
 
   return (
     <section className="overflow-hidden rounded-xl border border-white/10 bg-[#151b24] shadow-2xl">
-      <div className="border-b border-white/10 bg-[radial-gradient(circle_at_10%_0%,rgba(255,85,51,0.18),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.015))] p-4">
+      <div className="border-b border-white/10 bg-[radial-gradient(circle_at_15%_0%,rgba(255,85,51,0.18),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.015))] p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
               Current market
             </p>
             <p className="mt-1 max-w-full truncate text-xs font-bold text-slate-400">
-              {data?.query ?? "Waiting for card details"}
+              {data?.query ?? "Enter the card identity to compare active eBay listings."}
             </p>
           </div>
-          {data ? <ConfidenceBadge confidence={data.confidence} /> : null}
+          {data?.samples ? (
+            <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-100">
+              eBay active
+            </span>
+          ) : null}
         </div>
-        {data ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            <MarketChip label="Exact listings" value={data.samples.toString()} />
-            <MarketChip label="Filtered" value={(data.filteredOut ?? 0).toString()} />
-            <MarketChip label="Source" value="eBay active" />
-          </div>
-        ) : null}
       </div>
 
       <div className="p-4">
         {!canFetch ? (
           <EmptyMessage
             card={card}
-            text="Add at least player and year to scan current eBay listings."
+            text="Add a player and year to check the current market."
           />
         ) : isLoading ? (
           <CompsSkeleton compact={compact} />
@@ -181,7 +173,7 @@ export function SoldComps({
             onValueAccepted={onValueAccepted}
           />
         ) : (
-          <EmptyMessage card={card} text="No exact current listings found for this card." />
+          <EmptyMessage card={card} text="No exact active listings found for this card." />
         )}
       </div>
     </section>
@@ -199,35 +191,15 @@ function MarketBoard({
   data: SoldCompsResponse;
   onValueAccepted: (value: number) => void;
 }) {
-  const visibleComps = data.comps.slice(0, compact ? 3 : 6);
+  const visibleComps = data.comps.slice(0, compact ? 3 : 5);
 
   return (
     <div className="grid gap-4">
-      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-        <div className="rounded-2xl border border-white/10 bg-[#0d111a] p-4 shadow-[0_0_30px_rgba(255,85,51,0.10)]">
-          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-            Average ask
-          </p>
-          <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
-            <p className="text-4xl font-black text-emerald-300">
-              {formatMoney(data.avgPrice)}
-            </p>
-            <SourceBadge />
-          </div>
-          <p className="mt-2 text-xs font-bold text-slate-400">
-            median {formatMoney(data.medianPrice)} | low {formatMoney(data.lowPrice)} | high {formatMoney(data.highPrice)}
-          </p>
-          {data.confidence === "low" ? (
-            <p className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-100">
-              Thin market - fewer than 3 exact current listings found.
-            </p>
-          ) : null}
-        </div>
-        <div className="grid grid-cols-3 gap-2 sm:w-72">
-          <MiniMetric label="Listings" value={data.samples.toString()} />
-          <MiniMetric label="Loose" value={(data.filteredOut ?? 0).toString()} />
-          <MiniMetric label="Trimmed" value={data.outliersTrimmed.toString()} />
-        </div>
+      <div className={compact ? "grid gap-2" : "grid gap-3 sm:grid-cols-4"}>
+        <MarketStat label="Average ask" value={formatMoney(data.avgPrice)} primary />
+        <MarketStat label="Low" value={formatMoney(data.lowPrice)} />
+        <MarketStat label="High" value={formatMoney(data.highPrice)} />
+        <MarketStat label="Listings" value={data.samples.toString()} />
       </div>
 
       <button
@@ -235,11 +207,11 @@ function MarketBoard({
         onClick={() => onValueAccepted(data.avgPrice)}
         className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
       >
-        Use average ask as estimate
+        Use average ask
       </button>
 
       {!compact ? (
-        <div className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {visibleComps.map((comp) => (
             <CompCard key={`${comp.url}-${comp.price}`} comp={comp} />
           ))}
@@ -251,37 +223,6 @@ function MarketBoard({
           <CompRow key={`${comp.url}-${comp.price}`} comp={comp} compact={compact} />
         ))}
       </div>
-
-      {data.nearMatches.length ? (
-        <details className="rounded-xl border border-white/10 bg-[#0d111a] p-3">
-          <summary className="cursor-pointer list-none text-xs font-black text-slate-300">
-            {data.nearMatches.length} outlier{data.nearMatches.length === 1 ? "" : "s"} removed
-          </summary>
-          <div className="mt-3 grid gap-2">
-            {data.nearMatches.map((match) => (
-              <a
-                key={`${match.url}-${match.price}`}
-                href={match.url}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-xl border border-white/10 bg-white/[0.03] p-3 hover:bg-white/[0.06]"
-              >
-                <div className="flex justify-between gap-3">
-                  <p className="truncate text-xs font-black text-white">
-                    {trimTitle(match.title)}
-                  </p>
-                  <p className="text-xs font-black text-white">
-                    {formatMoney(match.price)}
-                  </p>
-                </div>
-                <p className="mt-1 text-[10px] font-bold text-slate-500">
-                  {match.reason === "outlier_high" ? "Unusually high" : "Unusually low"} ({formatMoney(match.price)})
-                </p>
-              </a>
-            ))}
-          </div>
-        </details>
-      ) : null}
 
       <a
         href={ebaySearchUrl(card)}
@@ -295,19 +236,23 @@ function MarketBoard({
   );
 }
 
-function MarketChip({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
-      {label}: <span className="text-white">{value}</span>
-    </span>
-  );
-}
-
-function MiniMetric({ label, value }: { label: string; value: string }) {
+function MarketStat({
+  label,
+  primary = false,
+  value,
+}: {
+  label: string;
+  primary?: boolean;
+  value: string;
+}) {
   return (
     <div className="rounded-xl border border-white/10 bg-[#0d111a] p-3">
-      <p className="text-lg font-black text-white">{value}</p>
-      <p className="mt-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+        {label}
+      </p>
+      <p className={`mt-2 font-black ${primary ? "text-4xl text-emerald-300" : "text-2xl text-white"}`}>
+        {value}
+      </p>
     </div>
   );
 }
@@ -318,9 +263,9 @@ function CompCard({ comp }: { comp: SoldComp }) {
       href={comp.url}
       target="_blank"
       rel="noreferrer"
-      className="group w-44 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] transition hover:-translate-y-0.5 hover:border-white/20"
+      className="group overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] transition hover:-translate-y-0.5 hover:border-white/20"
     >
-      <div className="relative h-44 bg-black/30">
+      <div className="relative aspect-[4/5] bg-black/30">
         {comp.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={comp.imageUrl} alt="" className="h-full w-full object-contain" />
@@ -332,10 +277,10 @@ function CompCard({ comp }: { comp: SoldComp }) {
         </span>
       </div>
       <div className="p-3">
-        <p className="line-clamp-2 min-h-8 text-[11px] font-black leading-4 text-white">
+        <p className="line-clamp-2 min-h-9 text-xs font-black leading-4 text-white">
           {comp.title}
         </p>
-        <p className="mt-2 text-sm font-black text-emerald-300">{formatMoney(comp.price)}</p>
+        <p className="mt-2 text-lg font-black text-emerald-300">{formatMoney(comp.price)}</p>
         <p className="mt-1 text-[10px] font-bold text-slate-500">{formatDate(comp.endDate)}</p>
       </div>
     </a>
@@ -351,19 +296,14 @@ function CompRow({ compact, comp }: { compact: boolean; comp: SoldComp }) {
       className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-xl border border-white/10 bg-[#0d111a] p-3 transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.04]"
     >
       <div className="min-w-0">
-        <p className={`${compact ? "text-[11px]" : "text-xs"} truncate font-black text-white`}>
-          {trimTitle(comp.title)}
+        <p className={`${compact ? "text-[11px]" : "text-sm"} truncate font-black text-white`}>
+          {trimTitle(comp.title, compact ? 46 : 70)}
         </p>
         <p className="mt-1 text-[10px] font-bold text-slate-500">
           {formatDate(comp.endDate)}
           {comp.condition ? (
             <span className="ml-2 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] text-slate-400">
               {comp.condition}
-            </span>
-          ) : null}
-          {comp.source === "active" ? (
-            <span className="ml-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[9px] text-amber-100">
-              listing
             </span>
           ) : null}
         </p>
@@ -377,7 +317,7 @@ function EmptyMessage({ card, text }: { card: SoldCompsCard; text: string }) {
   const href = ebaySearchUrl(card);
 
   return (
-    <div className="mt-4 rounded-xl border border-white/10 bg-[#0d111a] p-4 text-xs font-bold leading-5 text-slate-300">
+    <div className="rounded-xl border border-white/10 bg-[#0d111a] p-4 text-xs font-bold leading-5 text-slate-300">
       <p>{text}</p>
       {href ? (
         <a
@@ -393,32 +333,17 @@ function EmptyMessage({ card, text }: { card: SoldCompsCard; text: string }) {
   );
 }
 
-function ConfidenceBadge({ confidence }: { confidence: Confidence }) {
-  const classes = {
-    high: "border-emerald-500/25 bg-emerald-500/10 text-emerald-200",
-    medium: "border-amber-500/25 bg-amber-500/10 text-amber-100",
-    low: "border-red-500/25 bg-red-500/10 text-red-100",
-  };
-
-  return (
-    <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${classes[confidence]}`}>
-      {confidence}
-    </span>
-  );
-}
-
-function SourceBadge() {
-  return (
-    <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-100">
-      Current ask
-    </span>
-  );
-}
-
 function CompsSkeleton({ compact }: { compact: boolean }) {
   return (
-    <div className="mt-4 grid gap-2">
-      <div className="h-28 animate-pulse rounded-2xl border border-white/10 bg-white/[0.05]" />
+    <div className="grid gap-2">
+      <div className="grid gap-2 sm:grid-cols-4">
+        {Array.from({ length: compact ? 2 : 4 }).map((_, index) => (
+          <div
+            key={index}
+            className="h-20 animate-pulse rounded-xl border border-white/10 bg-white/[0.05]"
+          />
+        ))}
+      </div>
       {Array.from({ length: compact ? 2 : 3 }).map((_, index) => (
         <div
           key={index}
@@ -429,8 +354,8 @@ function CompsSkeleton({ compact }: { compact: boolean }) {
   );
 }
 
-function trimTitle(value: string) {
-  return value.length > 40 ? `${value.slice(0, 40)}...` : value;
+function trimTitle(value: string, max = 48) {
+  return value.length > max ? `${value.slice(0, max)}...` : value;
 }
 
 function ebaySearchUrl(card: SoldCompsCard) {

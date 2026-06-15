@@ -205,53 +205,6 @@ export default function UploadPage() {
     setStep("Review");
   }
 
-  function reparseDraftTitle() {
-    if (!draft) return;
-
-    const identified = identifyFromTitle(draft.fileName);
-    setDraft((current) => {
-      if (!current) return current;
-      const nextConfidence = confidenceFromIdentifier(identified);
-
-      return {
-        ...current,
-        brand: identified.brand.value || current.brand,
-        cardNumber: identified.cardNumber.value || current.cardNumber,
-        certNumber: identified.certNumber.value || current.certNumber,
-        fieldConfidence: {
-          ...current.fieldConfidence,
-          ...nextConfidence,
-        },
-        grade: identified.grade.value || current.grade,
-        gradingCompany: identified.gradingCompany.value || current.gradingCompany,
-        parallel: identified.parallel.value || current.parallel,
-        player: identified.player.value || current.player,
-        set: cleanSetForComps(identified.set.value || current.set),
-        sport: normalizeSport(identified.sport.value || current.sport),
-        tags: normalizeTags([...current.tags, ...identified.tags]),
-        team: identified.team.value || current.team,
-        year: identified.year.value || current.year,
-      };
-    });
-  }
-
-  function normalizeDraftForExactComps() {
-    if (!draft) return;
-
-    updateDraft({
-      cardNumber: draft.cardNumber.replace(/^#+/, "").trim(),
-      grade: draft.grade || "Raw",
-      parallel: /^(base|none|n\/a|na|not specified|unknown)$/i.test(draft.parallel.trim())
-        ? ""
-        : draft.parallel.trim(),
-      set: cleanSetForComps(draft.set),
-    });
-  }
-
-  function markDraftAsBase() {
-    updateDraft({ parallel: "" });
-  }
-
   function updateDraft(updates: Partial<CardDraft>) {
     setDraft((current) => {
       if (!current) return current;
@@ -379,43 +332,17 @@ export default function UploadPage() {
                 Add a card to the vault.
               </h1>
               <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-300">
-                Import, identify, compare current listings, and save a card that feels
-                like a collectible object.
+                Import a listing, fix the identity in one clean review, and save it as
+                a collectible object.
               </p>
-              <div className="mt-5 flex flex-wrap gap-2">
-                <HeroPill label="Exact identity" value="Player + set + #" />
-                <HeroPill label="Market" value="Current asks" />
-                <HeroPill label="Storage" value="Compressed" />
-              </div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/25 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                  Market preview
-                </p>
-                <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-amber-100">
-                  active asks
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  ["Exact", "$6"],
-                  ["Median", "$8"],
-                  ["High", "$15"],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-xl border border-white/10 bg-[#0d111a] p-3">
-                    <p className="text-lg font-black text-emerald-300">{value}</p>
-                    <p className="mt-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 grid gap-2">
-                {["Set match", "Card number", "Parallel check"].map((item) => (
-                  <div key={item} className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-                    <span className="text-xs font-black text-slate-300">{item}</span>
-                    <span className="size-2 rounded-full bg-emerald-400" />
-                  </div>
-                ))}
+            <div className="relative min-h-44 overflow-hidden rounded-2xl border border-white/10 bg-[#0d111a] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+              <div className="absolute inset-x-0 top-0 h-1 bg-[#ff5533]" />
+              <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,rgba(255,85,51,0.10)_34%,transparent_60%)]" />
+              <div className="relative grid h-full place-items-center">
+                <div className="h-32 w-24 rotate-3 rounded-xl border border-white/15 bg-[linear-gradient(135deg,rgba(255,255,255,0.12),rgba(255,85,51,0.28),rgba(56,213,255,0.22),rgba(236,72,153,0.22))] p-1 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+                  <div className="h-full rounded-lg border border-white/10 bg-[#151b24]" />
+                </div>
               </div>
             </div>
           </div>
@@ -554,13 +481,6 @@ export default function UploadPage() {
                   </Field>
                 </div>
               </FieldGroup>
-
-              <IdentityRepairPanel
-                draft={draft}
-                onBase={markDraftAsBase}
-                onNormalize={normalizeDraftForExactComps}
-                onReparse={reparseDraftTitle}
-              />
 
               <FieldGroup title="Condition">
                 <PillRow
@@ -758,14 +678,6 @@ function StepRail({ activeStep }: { activeStep: Step }) {
   );
 }
 
-function HeroPill({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
-      {label}: <span className="text-white">{value}</span>
-    </span>
-  );
-}
-
 function InputOption({
   body,
   children,
@@ -808,7 +720,6 @@ function FieldGroup({ children, title }: { children: React.ReactNode; title: str
 
 function Field({
   children,
-  confidence,
   label,
 }: {
   children: React.ReactNode;
@@ -819,97 +730,9 @@ function Field({
     <label className="block">
       <span className="mb-1 flex min-h-5 items-center justify-between gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
         <span>{label}</span>
-        {confidence ? <ConfidenceBadge confidence={confidence} /> : null}
       </span>
       {children}
     </label>
-  );
-}
-
-function ConfidenceBadge({ confidence }: { confidence: FieldConfidence }) {
-  const label =
-    confidence.confidence >= 0.85
-      ? "✓"
-      : confidence.confidence >= 0.5
-        ? "⚠"
-        : "✗";
-  const className =
-    confidence.confidence >= 0.85
-      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
-      : confidence.confidence >= 0.5
-        ? "border-amber-500/25 bg-amber-500/10 text-amber-100"
-        : "border-red-500/25 bg-red-500/10 text-red-100";
-
-  return (
-    <span
-      className={`grid size-6 place-items-center rounded-full border text-[10px] font-black ${className}`}
-      title={`${Math.round(confidence.confidence * 100)}% from ${confidence.source.replace("_", " ")}`}
-    >
-      {label}
-    </span>
-  );
-}
-
-function IdentityRepairPanel({
-  draft,
-  onBase,
-  onNormalize,
-  onReparse,
-}: {
-  draft: CardDraft;
-  onBase: () => void;
-  onNormalize: () => void;
-  onReparse: () => void;
-}) {
-  const exactQuery = [
-    draft.year,
-    cleanSetForComps(draft.set || draft.brand),
-    draft.player,
-    draft.cardNumber ? `#${draft.cardNumber.replace(/^#+/, "")}` : "",
-    draft.parallel,
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return (
-    <section className="rounded-xl border border-[#ff5533]/20 bg-[#ff5533]/[0.06] p-4 shadow-[0_0_30px_rgba(255,85,51,0.08)]">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[#ffb199]">
-            Exact match controls
-          </p>
-          <p className="mt-1 truncate text-sm font-black text-white">
-            {exactQuery || "Fill player, year, set, and card number"}
-          </p>
-          <p className="mt-1 text-xs font-bold leading-5 text-slate-400">
-            Current listings are filtered by set, card number, and parallel before pricing.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={onNormalize}
-            className="h-9 rounded-lg bg-[#ff5533] px-3 text-xs font-black text-white hover:brightness-110"
-          >
-            Normalize
-          </button>
-          <button
-            type="button"
-            onClick={onBase}
-            className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10"
-          >
-            Base card
-          </button>
-          <button
-            type="button"
-            onClick={onReparse}
-            className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10"
-          >
-            Re-read title
-          </button>
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -1264,13 +1087,6 @@ function normalizeFieldConfidence(value: unknown): Record<string, FieldConfidenc
 function normalizeTags(values: unknown): CardTag[] {
   if (!Array.isArray(values)) return [];
   return values.filter((value): value is CardTag => cardTags.includes(value as CardTag));
-}
-
-function cleanSetForComps(value: string) {
-  return value
-    .replace(/\b(19[8-9]\d|20[0-3]\d)\b/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function normalizeSport(value: string) {

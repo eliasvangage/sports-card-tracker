@@ -1191,7 +1191,7 @@ function displayModeClasses(mode: DisplayMode) {
     return "grid gap-4";
   }
 
-  return "grid auto-rows-fr gap-4 [grid-template-columns:repeat(auto-fill,minmax(190px,1fr))]";
+  return "grid auto-rows-fr gap-5 [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]";
 }
 
 function CollectionQuickNav({
@@ -3549,7 +3549,7 @@ function CardTile({
     <button
       onClick={onClick}
       onDoubleClick={onDoubleClick}
-      className={`group h-full overflow-hidden rounded-2xl border bg-[linear-gradient(145deg,#151b24,#0d111a)] p-3 text-left transition duration-150 ease-out [contain-intrinsic-size:420px] [content-visibility:auto] hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)] ${selectedClass} ${
+      className={`group h-full overflow-hidden rounded-2xl border bg-[linear-gradient(145deg,#151b24,#0d111a)] p-4 text-left transition duration-150 ease-out [contain-intrinsic-size:560px] [content-visibility:auto] hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)] ${selectedClass} ${
         highlighted ? "ring-1 ring-[#ff5533]/25" : ""
       } ${tileBorderAccentClass(borderStyle)} ${
         mode === "Showcase"
@@ -3557,23 +3557,11 @@ function CardTile({
           : "flex flex-col"
       }`}
     >
-      <div className={`relative overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] ${mode === "Showcase" ? "h-[320px]" : "h-[190px]"}`}>
-        {card.status === "For Trade" ? (
-          <div className="pointer-events-none absolute right-2 top-2 z-20 rounded-full bg-[#ff5533] px-2 py-1 text-[9px] font-black text-white shadow-[0_0_20px_rgba(255,85,51,0.25)]">
-            FOR TRADE
-          </div>
-        ) : null}
-        {value ? (
-          <div className={`pointer-events-none absolute z-20 rounded-full border border-emerald-300/20 bg-emerald-300/15 px-2 py-1 text-[10px] font-black text-emerald-100 backdrop-blur ${
-            card.status === "For Trade" ? "right-2 top-9" : "right-2 top-2"
-          }`}>
-            {formatMoney(value)}
-          </div>
-        ) : null}
+      <div className={`relative overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] ${mode === "Showcase" ? "h-[320px]" : "h-[300px]"}`}>
         <TileCardImage
           card={card}
           accent={accent}
-          sizes={mode === "Showcase" ? "320px" : "220px"}
+          sizes={mode === "Showcase" ? "320px" : "300px"}
         />
         <div
           className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-1"
@@ -3584,18 +3572,18 @@ function CardTile({
         className={
           mode === "Showcase"
             ? "min-w-0 rounded-xl border border-white/10 bg-black/25 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
-            : "flex flex-1 flex-col px-1 pt-3"
+            : "flex flex-1 flex-col pt-4"
         }
       >
         <div className="min-w-0">
-          <p className={`${mode === "Showcase" ? "text-3xl" : "truncate text-sm"} font-black leading-tight text-white`}>
+          <p className={`${mode === "Showcase" ? "text-3xl" : "truncate text-base"} font-black leading-tight text-white`}>
             {card.player}
           </p>
-          <p className={`${mode === "Showcase" ? "mt-2 text-sm" : "mt-1 truncate text-xs"} font-bold leading-5 text-slate-400`}>
+          <p className={`${mode === "Showcase" ? "mt-2 text-sm" : "mt-1 truncate text-sm"} font-bold leading-5 text-slate-400`}>
             {card.year} {card.brand}
           </p>
         </div>
-        <p className={`${mode === "Showcase" ? "mt-5 text-base leading-7" : "mt-2 line-clamp-2 text-xs leading-5"} font-bold text-slate-100`}>
+        <p className={`${mode === "Showcase" ? "mt-5 text-base leading-7" : "mt-3 line-clamp-2 text-sm leading-5"} font-bold text-slate-100`}>
           {cardSubtitle(card)}
         </p>
         {mode === "Showcase" && card.notes ? (
@@ -3616,6 +3604,11 @@ function CardTile({
                 {tag}
               </span>
             ))}
+            {card.status === "For Trade" ? (
+              <span className="rounded-full border border-[#ff5533]/30 bg-[#ff5533]/15 px-2 py-1 text-[10px] font-black text-[#ffb199]">
+                For trade
+              </span>
+            ) : null}
           </div>
           <div className="mt-3 flex items-center justify-between gap-3">
             <span className="text-sm font-black text-emerald-300">

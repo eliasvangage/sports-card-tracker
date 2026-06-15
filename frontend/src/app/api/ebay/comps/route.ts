@@ -242,6 +242,7 @@ function filterRelevantComps(comps: RawComp[], fields: CardFields) {
 }
 
 function isRelevantComp(title: string, fields: CardFields) {
+  const lowerTitle = title.toLowerCase();
   const normalizedTitle = normalizeForMatch(title);
   const playerTokens = normalizeForMatch(fields.player)
     .split(" ")
@@ -266,6 +267,7 @@ function isRelevantComp(title: string, fields: CardFields) {
   if (!hasTag(fields, "Patch") && /\b(patch|rpa|relic|jersey)\b/.test(normalizedTitle)) {
     return false;
   }
+  if (!hasTag(fields, "Numbered") && hasNumberedSignal(lowerTitle)) return false;
 
   if (!isBaseParallel(fields.parallel)) {
     const parallelTokens = normalizeForMatch(fields.parallel)
@@ -310,6 +312,12 @@ function hasNonBaseParallel(normalizedTitle: string) {
 
 function hasAutoSignal(normalizedTitle: string) {
   return /\b(auto|autograph|signed|redemption|cba|certified autograph)\b/.test(normalizedTitle);
+}
+
+function hasNumberedSignal(lowerTitle: string) {
+  return /\b1\s*of\s*1\b|\b1\/1\b|\/\s*\d{1,4}\b|\bnumbered\b|\bserial numbered\b|\bprinting plate\b|\bsuperfractor\b/.test(
+    lowerTitle,
+  );
 }
 
 function hasTag(fields: CardFields, tag: string) {
