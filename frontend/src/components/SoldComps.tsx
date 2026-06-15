@@ -135,14 +135,14 @@ export function SoldComps({
 
   return (
     <section className="overflow-hidden rounded-xl border border-white/10 bg-[#151b24] shadow-2xl">
-      <div className="border-b border-white/10 bg-[radial-gradient(circle_at_15%_0%,rgba(255,85,51,0.18),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.015))] p-4">
+      <div className="border-b border-white/10 bg-[linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.015))] p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-              Current market
+              Current listings
             </p>
             <p className="mt-1 max-w-full truncate text-xs font-bold text-slate-400">
-              {data?.query ?? "Enter the card identity to compare active eBay listings."}
+              {data?.query ?? "Enter the card identity to compare exact active eBay listings."}
             </p>
           </div>
           {data?.samples ? (
@@ -157,7 +157,7 @@ export function SoldComps({
         {!canFetch ? (
           <EmptyMessage
             card={card}
-            text="Add a player and year to check the current market."
+            text="Add a player and year to check exact current listings."
           />
         ) : isLoading ? (
           <CompsSkeleton compact={compact} />
@@ -173,7 +173,7 @@ export function SoldComps({
             onValueAccepted={onValueAccepted}
           />
         ) : (
-          <EmptyMessage card={card} text="No exact active listings found for this card." />
+          <EmptyMessage card={card} text="No exact current listings found for this card." />
         )}
       </div>
     </section>
@@ -195,11 +195,29 @@ function MarketBoard({
 
   return (
     <div className="grid gap-4">
-      <div className={compact ? "grid gap-2" : "grid gap-3 sm:grid-cols-4"}>
-        <MarketStat label="Average ask" value={formatMoney(data.avgPrice)} primary />
-        <MarketStat label="Low" value={formatMoney(data.lowPrice)} />
-        <MarketStat label="High" value={formatMoney(data.highPrice)} />
-        <MarketStat label="Listings" value={data.samples.toString()} />
+      <div className="rounded-xl border border-white/10 bg-[#0d111a] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+              Exact average ask
+            </p>
+            <p className="mt-1 text-4xl font-black text-emerald-300">
+              {formatMoney(data.avgPrice)}
+            </p>
+            <p className="mt-2 text-xs font-bold text-slate-500">
+              Active eBay listings filtered by player, set, and card identity.
+            </p>
+          </div>
+          <div className="shrink-0 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-right">
+            <p className="text-lg font-black text-white">{data.samples}</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+              listing{data.samples === 1 ? "" : "s"}
+            </p>
+            <p className="mt-1 text-[11px] font-bold text-slate-400">
+              {formatMoney(data.lowPrice)} - {formatMoney(data.highPrice)}
+            </p>
+          </div>
+        </div>
       </div>
 
       <button
@@ -207,22 +225,22 @@ function MarketBoard({
         onClick={() => onValueAccepted(data.avgPrice)}
         className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
       >
-        Use average ask
+        Use as estimated value
       </button>
 
       {!compact ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {visibleComps.map((comp) => (
             <CompCard key={`${comp.url}-${comp.price}`} comp={comp} />
           ))}
         </div>
-      ) : null}
-
-      <div className="grid gap-2">
-        {visibleComps.map((comp) => (
-          <CompRow key={`${comp.url}-${comp.price}`} comp={comp} compact={compact} />
-        ))}
-      </div>
+      ) : (
+        <div className="grid gap-2">
+          {visibleComps.map((comp) => (
+            <CompRow key={`${comp.url}-${comp.price}`} comp={comp} compact={compact} />
+          ))}
+        </div>
+      )}
 
       <a
         href={ebaySearchUrl(card)}
@@ -232,27 +250,6 @@ function MarketBoard({
       >
         Open eBay search
       </a>
-    </div>
-  );
-}
-
-function MarketStat({
-  label,
-  primary = false,
-  value,
-}: {
-  label: string;
-  primary?: boolean;
-  value: string;
-}) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-[#0d111a] p-3">
-      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-        {label}
-      </p>
-      <p className={`mt-2 font-black ${primary ? "text-4xl text-emerald-300" : "text-2xl text-white"}`}>
-        {value}
-      </p>
     </div>
   );
 }
@@ -389,7 +386,8 @@ function formatDate(value: string) {
 function formatMoney(value: number) {
   return new Intl.NumberFormat("en-US", {
     currency: "USD",
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
     style: "currency",
   }).format(value);
 }

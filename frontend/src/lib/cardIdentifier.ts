@@ -347,13 +347,19 @@ function tagsFromTitle(title: string) {
   if (/\b(RC|ROOKIE|ROOKIE CARD)\b/.test(upperTitle)) tags.push("Rookie");
   if (/\b(AUTO|AUTOGRAPH|SIGNED|AU)\b/.test(upperTitle)) tags.push("Auto");
   if (/\b(PATCH|RPA)\b/.test(upperTitle)) tags.push("Patch");
-  if (/\d+/.test(title)) tags.push("Numbered");
+  if (hasSerialNumberSignal(title)) tags.push("Numbered");
 
   return Array.from(new Set(tags));
 }
 
 function printRunFromTitle(title: string) {
   return title.match(/\/\s*(\d{1,5})\b/)?.[0].replace(/\s+/g, "") ?? "";
+}
+
+function hasSerialNumberSignal(title: string) {
+  return /\b1\s*of\s*1\b|\b1\/1\b|\/\s*\d{1,5}\b|\b(serial\s*)?numbered\b|\b\d+\s*\/\s*\d+\b/i.test(
+    title,
+  );
 }
 
 function cleanPlayerName(value: string) {

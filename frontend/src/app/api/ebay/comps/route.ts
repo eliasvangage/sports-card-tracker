@@ -133,8 +133,11 @@ function buildSmartQuery(fields: CardFields) {
   const grade = fields.grade && fields.grade !== "Raw" ? fields.grade : "";
   const parallel = isBaseParallel(fields.parallel) ? "" : fields.parallel;
   const cardNumber = normalizeCardNumber(fields.cardNumber);
+  const baseHint = isBaseCard(fields) && !cardNumber ? "Base" : "";
   const words = cleanQueryText(
-    [fields.year, identity, fields.player, cardNumber, grade, parallel].filter(Boolean).join(" "),
+    [fields.year, identity, fields.player, cardNumber || baseHint, grade, parallel]
+      .filter(Boolean)
+      .join(" "),
   )
     .split(" ")
     .filter(Boolean);
@@ -260,11 +263,14 @@ function isRelevantComp(title: string, fields: CardFields) {
   }
   if (cardNumber && !titleHasCardNumber(normalizedTitle, cardNumber)) return false;
 
+  if (isBaseCard(fields) && hasBaseMismatchSignal(title, normalizedTitle)) {
+    return false;
+  }
   if (isBaseParallel(fields.parallel) && hasNonBaseParallel(normalizedTitle)) {
     return false;
   }
   if (!hasTag(fields, "Auto") && hasAutoSignal(normalizedTitle)) return false;
-  if (!hasTag(fields, "Patch") && /\b(patch|rpa|relic|jersey)\b/.test(normalizedTitle)) {
+  if (!hasTag(fields, "Patch") && hasPatchSignal(normalizedTitle)) {
     return false;
   }
   if (!hasTag(fields, "Numbered") && hasNumberedSignal(lowerTitle)) return false;
@@ -280,6 +286,15 @@ function isRelevantComp(title: string, fields: CardFields) {
   }
 
   return true;
+}
+
+function isBaseCard(fields: CardFields) {
+  return (
+    isBaseParallel(fields.parallel) &&
+    !hasTag(fields, "Auto") &&
+    !hasTag(fields, "Patch") &&
+    !hasTag(fields, "Numbered")
+  );
 }
 
 function identityTokens(fields: CardFields) {
@@ -307,17 +322,42 @@ function titleHasCardNumber(normalizedTitle: string, cardNumber: string) {
 }
 
 function hasNonBaseParallel(normalizedTitle: string) {
-  return /\b(superfractor|refractor|mojo|silver|gold|blue|red|orange|purple|pink|green|aqua|holo|rainbow|cracked ice|shimmer|disco|hyper|sepia|xfractor|x-fractor|speckle|wave|lava)\b/.test(normalizedTitle);
+  return /\b(superfractor|refractor|mojo|silver|gold|blue|red|orange|purple|pink|green|aqua|holo|rainbow|cracked ice|shimmer|disco|hyper|sepia|xfractor|x fractor|speckle|wave|lava|sapphire|atomic)\b/.test(
+    normalizedTitle,
+  );
 }
 
 function hasAutoSignal(normalizedTitle: string) {
   return /\b(auto|autograph|signed|redemption|cba|certified autograph)\b/.test(normalizedTitle);
 }
 
+function hasPatchSignal(normalizedTitle: string) {
+  return /\b(patch|patchwork|rpa|relic|jersey|memorabilia|materials)\b/.test(normalizedTitle);
+}
+
 function hasNumberedSignal(lowerTitle: string) {
   return /\b1\s*of\s*1\b|\b1\/1\b|\/\s*\d{1,4}\b|\bnumbered\b|\bserial numbered\b|\bprinting plate\b|\bsuperfractor\b/.test(
     lowerTitle,
   );
+}
+
+function hasBaseMismatchSignal(rawTitle: string, normalizedTitle: string) {
+  return (
+    hasInsertSignal(normalizedTitle) ||
+    hasPatchSignal(normalizedTitle) ||
+    hasInsertCardCode(rawTitle) ||
+    hasNumberedSignal(rawTitle.toLowerCase())
+  );
+}
+
+function hasInsertSignal(normalizedTitle: string) {
+  return /\b(patchwork|case hit|casehit|ssp|short print|sp|insert|variation|image variation|parallel|prospect power up|spotlight|bowman scouts|scouts top|top 100|major league material|modern prospects|rookie of the year favorites|sights on september|bowman ai|chrome prospects)\b/.test(
+    normalizedTitle,
+  );
+}
+
+function hasInsertCardCode(rawTitle: string) {
+  return /#\s*[a-z]{1,6}-\d{1,5}\b|\b[a-z]{1,6}-\d{1,5}\b/i.test(rawTitle);
 }
 
 function hasTag(fields: CardFields, tag: string) {

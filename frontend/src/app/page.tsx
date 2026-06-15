@@ -291,6 +291,12 @@ export default function Home() {
     .filter((card) => card.tags?.includes("Favorite") && card.id !== grailCard?.id)
     .slice(0, 5);
   const tradeCards = allCards.filter((card) => card.status === "For Trade");
+  const coverCards = [
+    ...favoriteCards,
+    ...allCards
+      .filter((card) => !favoriteCards.some((favorite) => favorite.id === card.id))
+      .toSorted((a, b) => cardValue(b) - cardValue(a)),
+  ].slice(0, 3);
   function deleteCard(id: string) {
     const nextCards = savedCards.filter((card) => card.id !== id);
     setSavedCards(nextCards);
@@ -560,7 +566,7 @@ export default function Home() {
       {activeSection === "Collection" ? (
         <>
       <section className="mx-auto max-w-[1680px] px-4 py-4 sm:px-6">
-        <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.08),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.055),rgba(255,255,255,0.015))] p-4 shadow-2xl sm:p-5">
+        <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.025)_1px,transparent_1px),radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.08),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.055),rgba(255,255,255,0.015))] bg-[size:28px_28px,28px_28px,auto,auto] p-4 shadow-2xl sm:p-5">
           <div
             className="absolute inset-x-0 top-0 h-1"
             style={{ backgroundColor: activeTheme.accent }}
@@ -616,7 +622,7 @@ export default function Home() {
                 />
               </div>
               <div className="mt-5 flex min-h-40 items-end justify-center gap-0">
-                {(favoriteCards.length ? favoriteCards : allCards).slice(0, 3).map((card, index) => (
+                {coverCards.map((card, index) => (
                   <button
                     key={card.id}
                     type="button"
@@ -660,8 +666,8 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-[1680px] gap-4 px-4 pb-8 sm:px-6 xl:grid-cols-[190px_minmax(0,1fr)_300px]">
-        <aside className={`h-fit max-h-[calc(100vh-5.5rem)] overflow-y-auto rounded-xl border border-white/10 ${activeTheme.panel} p-3 shadow-xl lg:sticky lg:top-20`}>
+      <section className="mx-auto grid max-w-[1680px] gap-4 px-4 pb-8 sm:px-6 xl:grid-cols-[220px_minmax(0,1fr)_300px]">
+        <aside className={`h-fit max-h-[calc(100vh-5.5rem)] overflow-y-auto overflow-x-hidden rounded-xl border border-white/10 ${activeTheme.panel} p-3 shadow-xl [scrollbar-width:none] lg:sticky lg:top-20 [&::-webkit-scrollbar]:hidden`}>
           <RailSection title="Find">
             <input
               value={query}
@@ -700,7 +706,7 @@ export default function Home() {
                   />
                   <button
                     onClick={addCollection}
-                    className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10"
+                    className="h-8 w-full rounded-md border border-white/10 bg-white/5 px-2 text-xs font-black text-slate-200 hover:bg-white/10"
                   >
                     Add collection
                   </button>
@@ -714,7 +720,7 @@ export default function Home() {
                   />
                   <button
                     onClick={addChaseCard}
-                    className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10"
+                    className="h-8 w-full rounded-md border border-white/10 bg-white/5 px-2 text-xs font-black text-slate-200 hover:bg-white/10"
                   >
                     Add wishlist
                   </button>
@@ -1111,9 +1117,6 @@ export default function Home() {
                     <EditField label="Acquired from">
                       <input value={selectedCard.acquiredFrom ?? ""} onChange={(event) => updateCard(selectedCard.id, { acquiredFrom: event.target.value })} className="studio-field" placeholder="Shop, trade, eBay, show..." />
                     </EditField>
-                    <EditField label="Target price">
-                      <input value={selectedCard.targetPrice ?? ""} onChange={(event) => updateCard(selectedCard.id, { targetPrice: event.target.value })} className="studio-field" placeholder="Wishlist target" />
-                    </EditField>
                     <SoldComps
                       card={selectedCard}
                       compact
@@ -1200,7 +1203,7 @@ function displayModeClasses(mode: DisplayMode) {
     return "grid gap-5";
   }
 
-  return "grid auto-rows-fr gap-5 [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]";
+  return "grid auto-rows-fr gap-4 [grid-template-columns:repeat(auto-fit,minmax(235px,1fr))]";
 }
 
 function CollectionQuickNav({
@@ -3692,24 +3695,24 @@ function CardTile({
       <button
         onClick={onClick}
         onDoubleClick={onDoubleClick}
-        className={`grid grid-cols-[40px_minmax(0,1fr)_auto_auto_auto] items-center gap-3 border-b border-white/5 bg-[#0d111a] px-3 py-2.5 text-left transition hover:bg-white/[0.03] ${
+        className={`grid min-h-20 grid-cols-[48px_minmax(0,1fr)_56px_76px_110px] items-center gap-3 border-b border-white/5 bg-[#0d111a] px-3 py-2.5 text-left transition hover:bg-white/[0.03] max-lg:grid-cols-[48px_minmax(0,1fr)_76px] ${
           selected ? "shadow-[inset_3px_0_0_#ff5533]" : ""
         }`}
       >
-        <div className="relative h-14 w-10 overflow-hidden rounded-md border border-white/10 bg-[#151b24]">
-          <TileCardImage card={card} sizes="40px" accent={accent} />
+        <div className="relative h-16 w-12 overflow-hidden rounded-md border border-white/10 bg-[#151b24]">
+          <TileCardImage card={card} sizes="48px" accent={accent} />
         </div>
         <div className="min-w-0">
           <p className="truncate text-sm font-black text-white">{card.player}</p>
           <p className="truncate text-xs font-bold text-slate-400">{cardSubtitle(card)}</p>
         </div>
-        <span className="hidden rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black text-slate-300 sm:inline">
+        <span className="hidden justify-self-end rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black text-slate-300 lg:inline">
           {isDisplayGrade(card.grade) ? card.grade : "Raw"}
         </span>
-        <span className="hidden text-right text-xs font-black text-white md:block">
+        <span className="justify-self-end text-right text-sm font-black text-white">
           {value ? formatMoney(value) : ""}
         </span>
-        <div className="flex items-center gap-2 justify-self-end">
+        <div className="hidden items-center gap-2 justify-self-end lg:flex">
           <span
             className={`size-2 rounded-full ${
               card.status === "For Trade"
@@ -3731,24 +3734,24 @@ function CardTile({
     <button
       onClick={onClick}
       onDoubleClick={onDoubleClick}
-      className={`group h-full overflow-hidden rounded-2xl border bg-[linear-gradient(145deg,#151b24,#0d111a)] p-4 text-left transition duration-150 ease-out [contain-intrinsic-size:560px] [content-visibility:auto] hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)] ${selectedClass} ${
+      className={`group h-full overflow-hidden rounded-2xl border bg-[linear-gradient(145deg,#151b24,#0d111a)] p-3 text-left transition duration-150 ease-out [contain-intrinsic-size:520px] hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)] ${selectedClass} ${
         highlighted ? "ring-1 ring-[#ff5533]/25" : ""
       } ${tileBorderAccentClass(borderStyle)} ${
         mode === "Showcase"
-          ? "grid items-center gap-6 p-5 sm:grid-cols-[360px_minmax(0,1fr)]"
+          ? "grid items-center gap-5 p-5 sm:grid-cols-[320px_minmax(0,1fr)]"
           : "flex flex-col"
       }`}
     >
-      <div className={`relative grid place-items-center overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] p-4 ${mode === "Showcase" ? "h-[380px]" : "h-[300px]"}`}>
+      <div className={`relative grid place-items-center overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] p-4 ${mode === "Showcase" ? "h-[330px]" : "h-[260px]"}`}>
         <div
           className={`${frameShellClass(tileFrameStyle)} relative h-full max-h-full aspect-[5/7]`}
           style={frameShellStyle(tileFrameStyle, tileAccent)}
         >
           <div className={`relative h-full overflow-hidden rounded-lg ${imageWindowClass(tileFrameStyle)} ${innerFrameClass(tileFrameStyle)}`}>
-        <TileCardImage
+            <TileCardImage
               card={card}
               accent={accent}
-              sizes={mode === "Showcase" ? "380px" : "300px"}
+              sizes={mode === "Showcase" ? "330px" : "260px"}
             />
           </div>
         </div>
@@ -4270,7 +4273,8 @@ function formatMoney(value: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
   }).format(value);
 }
 
