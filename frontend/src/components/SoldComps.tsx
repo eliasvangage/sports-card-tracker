@@ -205,7 +205,7 @@ function MarketBoard({
               {formatMoney(data.avgPrice)}
             </p>
             <p className="mt-2 text-xs font-bold text-slate-500">
-              Active eBay listings filtered by player, set, and card identity.
+              Current eBay asks filtered by player, set, card number, and finish.
             </p>
           </div>
           <div className="shrink-0 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-right">
@@ -242,14 +242,24 @@ function MarketBoard({
         </div>
       )}
 
-      <a
-        href={ebaySearchUrl(card)}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
-      >
-        Open eBay search
-      </a>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <a
+          href={ebaySearchUrl(card)}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
+        >
+          Open eBay search
+        </a>
+        <a
+          href={oneThirtyPointUrl(card)}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex h-10 items-center justify-center rounded-lg border border-[#ff5533]/30 bg-[#ff5533]/10 px-4 text-sm font-black text-orange-100 hover:bg-[#ff5533]/15"
+        >
+          Check 130point sales
+        </a>
+      </div>
     </div>
   );
 }
@@ -312,20 +322,31 @@ function CompRow({ compact, comp }: { compact: boolean; comp: SoldComp }) {
 
 function EmptyMessage({ card, text }: { card: SoldCompsCard; text: string }) {
   const href = ebaySearchUrl(card);
+  const researchHref = oneThirtyPointUrl(card);
 
   return (
     <div className="rounded-xl border border-white/10 bg-[#0d111a] p-4 text-xs font-bold leading-5 text-slate-300">
       <p>{text}</p>
-      {href ? (
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {href ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
+          >
+            Search eBay -&gt;
+          </a>
+        ) : null}
         <a
-          href={href}
+          href={researchHref}
           target="_blank"
           rel="noreferrer"
-          className="mt-3 inline-flex h-10 items-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
+          className="inline-flex h-10 items-center justify-center rounded-lg border border-[#ff5533]/30 bg-[#ff5533]/10 px-4 text-sm font-black text-orange-100 hover:bg-[#ff5533]/15"
         >
-          Search eBay manually -&gt;
+          Check 130point -&gt;
         </a>
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -371,6 +392,21 @@ function ebaySearchUrl(card: SoldCompsCard) {
   return query
     ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}`
     : "";
+}
+
+function oneThirtyPointUrl(card: SoldCompsCard) {
+  const query = [
+    card.year,
+    card.brand,
+    card.set,
+    card.player,
+    card.cardNumber ? `#${card.cardNumber}` : "",
+    card.parallel,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return `https://130point.com/sales/?search=${encodeURIComponent(query)}`;
 }
 
 function formatDate(value: string) {

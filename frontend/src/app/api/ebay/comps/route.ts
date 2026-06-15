@@ -60,7 +60,7 @@ type CompResponse = {
 };
 
 const allowedParams = ["player", "year", "brand", "set", "cardNumber", "parallel", "grade", "tags"] as const;
-const entriesPerPage = "25";
+const entriesPerPage = "50";
 
 export async function GET(request: Request) {
   const rateLimit = checkRateLimit({
@@ -92,7 +92,15 @@ export async function GET(request: Request) {
   }
 
   try {
-    const foundActive = await findBrowseActiveComps(query);
+    const fallbackQuery = buildFallbackQuery(fields);
+    const foundActive = dedupeComps([
+      ...(await findBrowseActiveComps(query)),
+      ...(
+        fallbackQuery && fallbackQuery !== query
+          ? await findBrowseActiveComps(fallbackQuery)
+          : []
+      ),
+    ]);
     const filteredActive = filterRelevantComps(foundActive, fields);
     const allComps = dedupeComps(filteredActive.comps);
     const filtered = removeOutliers(allComps);
@@ -145,12 +153,25 @@ function buildSmartQuery(fields: CardFields) {
   return words.slice(0, 7).join(" ");
 }
 
+function buildFallbackQuery(fields: CardFields) {
+  const identity = compactIdentityPhrase(fields);
+  const keyParallel = keyParallelPhrase(fields.parallel);
+  const words = cleanQueryText(
+    [fields.year, identity, fields.player, keyParallel].filter(Boolean).join(" "),
+  )
+    .split(" ")
+    .filter(Boolean);
+
+  return words.slice(0, 7).join(" ");
+}
+
 function bestIdentityPhrase(fields: CardFields) {
   const set = fields.set.replace(/\b(19[8-9]\d|20[0-3]\d)\b/g, "").trim();
   const combined = `${fields.brand} ${set}`.toLowerCase();
 
   if (combined.includes("topps chrome black")) return "Topps Chrome Black";
   if (combined.includes("upper deck mvp")) return "Upper Deck MVP";
+  if (combined.includes("bowman chrome mega box")) return "Bowman Chrome Mega Box";
   if (combined.includes("bowman chrome")) return "Bowman Chrome";
   if (combined.includes("bowman draft")) return "Bowman Draft";
   if (combined.includes("topps chrome")) return "Topps Chrome";
@@ -160,6 +181,13 @@ function bestIdentityPhrase(fields: CardFields) {
   if (combined.includes("panini prizm")) return "Panini Prizm";
 
   return fields.brand || set.split(" ").slice(0, 3).join(" ");
+}
+
+function compactIdentityPhrase(fields: CardFields) {
+  const identity = bestIdentityPhrase(fields);
+
+  if (identity === "Bowman Chrome Mega Box") return "Bowman Chrome";
+  return identity;
 }
 
 async function findBrowseActiveComps(query: string) {
@@ -262,7 +290,9 @@ function isRelevantComp(title: string, fields: CardFields) {
   if (setTokens.length && !setTokens.every((token) => normalizedTitle.includes(token))) {
     return false;
   }
-  if (cardNumber && !titleHasCardNumber(normalizedTitle, cardNumber)) return false;
+  if (cardNumber && !titleHasCardNumber(normalizedTitle, cardNumber) && hasCardNumberSignal(title)) {
+    return false;
+  }
 
   if (isBaseCard(fields) && hasBaseMismatchSignal(title, normalizedTitle, cardNumber)) {
     return false;
@@ -277,11 +307,7 @@ function isRelevantComp(title: string, fields: CardFields) {
   if (!hasTag(fields, "Numbered") && hasNumberedSignal(lowerTitle)) return false;
 
   if (!isBaseParallel(fields.parallel)) {
-    const parallelTokens = normalizeForMatch(fields.parallel)
-      .split(" ")
-      .filter((token) => token.length > 1 && !/^\d+$/.test(token));
-
-    if (parallelTokens.length && !parallelTokens.every((token) => normalizedTitle.includes(token))) {
+    if (!titleMatchesParallel(normalizedTitle, fields.parallel)) {
       return false;
     }
   }
@@ -325,8 +351,39 @@ function titleHasCardNumber(normalizedTitle: string, cardNumber: string) {
   return new RegExp(`(^|\\s)${escaped.join("\\s+")}(\\s|$)`, "i").test(normalizedTitle);
 }
 
+function hasCardNumberSignal(rawTitle: string) {
+  return /#\s*[a-z]{0,6}-?\d+[a-z]?|\bcard\s*(?:no\.?|number|#)\s*[a-z]{0,6}-?\d+[a-z]?\b/i.test(
+    rawTitle,
+  );
+}
+
+function titleMatchesParallel(normalizedTitle: string, parallel: string) {
+  const keyParallel = keyParallelPhrase(parallel);
+  const titleTokens = new Set(normalizedTitle.split(" ").filter(Boolean));
+  const tokens = normalizeForMatch(keyParallel)
+    .split(" ")
+    .filter((token) => token.length > 1 && !/^\d+$/.test(token));
+
+  return !tokens.length || tokens.every((token) => titleTokens.has(token));
+}
+
+function keyParallelPhrase(parallel: string) {
+  const normalized = normalizeForMatch(parallel);
+
+  if (normalized.includes("red") && normalized.includes("variation")) return "Red";
+  if (normalized.includes("rookie") && normalized.includes("variation")) return "Variation";
+  if (normalized.includes("mega") && normalized.includes("mojo")) return "Mega Mojo";
+  if (normalized.includes("mojo")) return "Mojo";
+  if (normalized.includes("eastern stars")) return "Eastern Stars";
+  if (normalized.includes("western stars")) return "Western Stars";
+  if (normalized.includes("red")) return "Red";
+  if (normalized.includes("refractor")) return "Refractor";
+
+  return parallel;
+}
+
 function hasNonBaseParallel(normalizedTitle: string) {
-  return /\b(superfractor|refractor|mojo|silver|gold|blue|red|orange|purple|pink|green|aqua|holo|rainbow|cracked ice|shimmer|disco|hyper|sepia|xfractor|x fractor|speckle|wave|lava|sapphire|atomic)\b/.test(
+  return /\b(superfractor|refractor|mojo|silver|gold|blue|red|orange|purple|pink|green|aqua|holo|rainbow|cracked ice|shimmer|disco|hyper|sepia|xfractor|x fractor|speckle|wave|lava|sapphire|atomic|variation|logo)\b/.test(
     normalizedTitle,
   );
 }

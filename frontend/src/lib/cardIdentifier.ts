@@ -143,9 +143,43 @@ function mergeFields(
   return Object.fromEntries(
     (Object.keys(aspectFields) as FieldName[]).map((key) => [
       key,
-      aspectFields[key].value ? aspectFields[key] : parsedFields[key],
+      chooseFieldValue(key, aspectFields[key], parsedFields[key]),
     ]),
   ) as Record<FieldName, IdentifiedField>;
+}
+
+function chooseFieldValue(
+  key: FieldName,
+  aspectFieldValue: IdentifiedField,
+  parsedFieldValue: IdentifiedField,
+) {
+  if (!aspectFieldValue.value) return parsedFieldValue;
+  if (!parsedFieldValue.value) return aspectFieldValue;
+  if (!valuesConflict(aspectFieldValue.value, parsedFieldValue.value)) return aspectFieldValue;
+
+  const titleTrustFields: FieldName[] = ["brand", "cardNumber", "parallel", "set", "year"];
+  if (titleTrustFields.includes(key) && parsedFieldValue.confidence >= 0.82) {
+    return parsedFieldValue;
+  }
+
+  return aspectFieldValue;
+}
+
+function valuesConflict(left: string, right: string) {
+  const leftValue = normalizeComparableValue(left);
+  const rightValue = normalizeComparableValue(right);
+
+  if (!leftValue || !rightValue || leftValue === rightValue) return false;
+  return !leftValue.includes(rightValue) && !rightValue.includes(leftValue);
+}
+
+function normalizeComparableValue(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/#/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function aspectField(value: string): IdentifiedField {
@@ -237,7 +271,7 @@ function parallelFromTitle(upperTitle: string) {
   const printRun = printRunFromTitle(upperTitle);
   const value = [match?.name ?? "", printRun].filter(Boolean).join(" ");
 
-  return titleField(value, value ? 0.76 : 0);
+  return titleField(value, value ? 0.86 : 0);
 }
 
 function gradeFromTitle(title: string) {
@@ -263,7 +297,7 @@ function cardNumberFromTitle(title: string) {
     title.match(/\b([A-Z]{1,6}-\d{1,5}[A-Z]?)\b/i)?.[1] ??
     "";
 
-  return titleField(value, value ? 0.82 : 0);
+  return titleField(value, value ? 0.9 : 0);
 }
 
 function certNumberFromTitle(title: string) {
@@ -280,7 +314,7 @@ function setFromTitle(title: string, brand: string) {
     explicitSet ??
     (brand && /\bchrome\s+black\b/i.test(title) ? `${brand} Black` : brand);
 
-  return titleField(value, value ? 0.68 : 0);
+  return titleField(value, explicitSet ? 0.86 : value ? 0.68 : 0);
 }
 
 function playerFromTitle(
@@ -416,6 +450,27 @@ const brandMap = [
 ];
 
 const parallelMap = [
+  {
+    name: "Red Rookie Logo Variation Refractor",
+    keywords: [
+      " RED ROOKIE LOGO VARIATION REFRACTOR ",
+      " RED ROOKIE VARIATION REFRACTOR ",
+      " RED RC VARIATION REFRACTOR ",
+      " RED ROOKIE CHROME REFRACTOR ",
+      " RED RC CHROME REFRACTOR ",
+    ],
+  },
+  {
+    name: "Rookie Logo Variation Refractor",
+    keywords: [
+      " ROOKIE LOGO VARIATION REFRACTOR ",
+      " ROOKIE VARIATION REFRACTOR ",
+      " RC VARIATION REFRACTOR ",
+    ],
+  },
+  { name: "Red Variation Refractor", keywords: [" RED VARIATION REFRACTOR "] },
+  { name: "Mega Box Mojo Refractor", keywords: [" MEGA BOX MOJO REFRACTOR ", " MEGA MOJO REFRACTOR "] },
+  { name: "Mojo Refractor", keywords: [" MOJO REFRACTOR "] },
   { name: "Eastern Stars", keywords: [" EASTERN STARS "] },
   { name: "Western Stars", keywords: [" WESTERN STARS "] },
   { name: "Superfractor /1", keywords: [" SUPERFRACTOR "] },
@@ -443,6 +498,7 @@ const setPatterns = [
   { name: "Topps Chrome Black", keywords: [" TOPPS CHROME BLACK ", " CHROME BLACK "] },
   { name: "Topps Chrome", keywords: [" TOPPS CHROME "] },
   { name: "Topps Heritage", keywords: [" TOPPS HERITAGE "] },
+  { name: "Bowman Chrome Mega Box", keywords: [" BOWMAN CHROME MEGA BOX ", " BOWMAN MEGA BOX "] },
   { name: "Bowman Chrome", keywords: [" BOWMAN CHROME "] },
   { name: "Bowman Draft", keywords: [" BOWMAN DRAFT "] },
   { name: "National Treasures", keywords: [" NATIONAL TREASURES "] },
