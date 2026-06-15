@@ -289,6 +289,7 @@ export default function Home() {
   const favoriteCards = allCards
     .filter((card) => card.tags?.includes("Favorite") && card.id !== grailCard?.id)
     .slice(0, 5);
+  const tradeCards = allCards.filter((card) => card.status === "For Trade");
   function deleteCard(id: string) {
     const nextCards = savedCards.filter((card) => card.id !== id);
     setSavedCards(nextCards);
@@ -572,7 +573,7 @@ export default function Home() {
                 {collectionName}
               </h2>
               <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-slate-400">
-                Browse, tune, value, and share cards from one focused vault view.
+                Browse your roster, feature favorites, and tune each card like a shelf piece.
               </p>
               <div className="mt-5 flex flex-wrap gap-2">
                 <Link
@@ -591,13 +592,13 @@ export default function Home() {
                 </button>
               </div>
               <div className="mt-5 grid max-w-2xl gap-2 sm:grid-cols-4">
-                <HeroMetric label="Cards saved" value={allCards.length.toString()} />
                 <HeroMetric
-                  label="Collection value"
+                  label="Vault value"
                   value={formatMoney(inventoryValue)}
                 />
-                <HeroMetric label="Total spent" value={formatMoney(costBasis)} />
-                <HeroMetric label="Sold" value={formatMoney(soldValue)} />
+                <HeroMetric label="Cards" value={allCards.length.toString()} />
+                <HeroMetric label="Favorites" value={favoriteCards.length.toString()} />
+                <HeroMetric label="For trade" value={tradeCards.length.toString()} />
               </div>
             </div>
 
@@ -907,9 +908,9 @@ export default function Home() {
                       key={`${selectedCard.id}-${selectedCard.imageX ?? 50}-${selectedCard.imageY ?? 50}-${selectedCard.imageZoom ?? 100}-${selectedCard.imageRotation ?? 0}`}
                       card={selectedCard}
                       accent={activeTheme.accent}
-                      borderStyle={borderStyle}
+                      borderStyle={selectedCard.borderStyle ?? borderStyle}
                       frameStyle={selectedCard.frameStyle ?? frameStyle}
-                      imageFit="contain"
+                      imageFit="cover"
                       large
                     />
                   </div>
@@ -1016,24 +1017,19 @@ export default function Home() {
                   </div>
                 ) : null}
                 {studioTab === "Display" ? (
-                  <div className="grid gap-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <EditField label="Frame">
-                        <select value={selectedCard.frameStyle ?? frameStyle} onChange={(event) => updateCard(selectedCard.id, { frameStyle: event.target.value as FrameStyle })} className="studio-field">
-                          <option>Card</option>
-                          <option>Gradient</option>
-                          <option>Sunset</option>
-                          <option>Stand</option>
-                        </select>
-                      </EditField>
-                      <EditField label="Finish">
-                        <select value={selectedCard.borderStyle ?? borderStyle} onChange={(event) => updateCard(selectedCard.id, { borderStyle: event.target.value as BorderStyle })} className="studio-field">
-                          <option>Soft</option>
-                          <option>Chrome</option>
-                          <option>Glow</option>
-                        </select>
-                      </EditField>
-                    </div>
+                  <div className="grid gap-3">
+                    <StylePicker
+                      label="Frame"
+                      options={["Card", "Gradient", "Sunset", "Stand"]}
+                      value={selectedCard.frameStyle ?? frameStyle}
+                      onChange={(value) => updateCard(selectedCard.id, { frameStyle: value as FrameStyle })}
+                    />
+                    <StylePicker
+                      label="Finish"
+                      options={["Soft", "Chrome", "Glow"]}
+                      value={selectedCard.borderStyle ?? borderStyle}
+                      onChange={(value) => updateCard(selectedCard.id, { borderStyle: value as BorderStyle })}
+                    />
                     <EditField label="Frame color">
                       <input value={selectedCard.color} onChange={(event) => updateCard(selectedCard.id, { color: event.target.value })} className="studio-field" type="color" />
                     </EditField>
@@ -1054,9 +1050,14 @@ export default function Home() {
                       </div>
                     </EditField>
                     <div className="rounded-lg border border-white/10 bg-black/20 p-3">
-                      <p className="mb-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-                        Crop
-                      </p>
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                          Crop window
+                        </p>
+                        <span className="text-[10px] font-bold text-slate-500">
+                          zoom crops the gallery image
+                        </span>
+                      </div>
                       <div className="grid gap-3">
                       <RangeField label="Horizontal" value={selectedCard.imageX ?? 50} onChange={(value) => updateCard(selectedCard.id, { imageX: value })} />
                       <RangeField label="Vertical" value={selectedCard.imageY ?? 50} onChange={(value) => updateCard(selectedCard.id, { imageY: value })} />
@@ -1844,8 +1845,12 @@ function PlatformPreview({
   profile: CollectorProfile;
   section: AppSection;
 }) {
-  const profileCards = favoriteCards.length ? favoriteCards.slice(0, 4) : allCards.slice(0, 4);
   const isProfile = section === "Profile";
+  const [profileTab, setProfileTab] = useState<"Overview" | "Shelf" | "Market" | "Edit">("Overview");
+  const wishlistCards = allCards.filter((card) => card.status === "Wishlist" || card.isChase);
+  const profileCards = isProfile
+    ? (favoriteCards.length ? favoriteCards : allCards.toSorted((a, b) => cardValue(b) - cardValue(a))).slice(0, 5)
+    : (wishlistCards.length ? wishlistCards : allCards.slice(0, 5));
   const teams = Array.from(new Set(allCards.map((card) => card.team).filter(Boolean))).slice(0, 5);
   const visibleCollections = collections.length
     ? collections
@@ -1855,6 +1860,12 @@ function PlatformPreview({
     : visibleCollections.slice(0, 1);
   const favoritePCs = profile.favoritePCs.length ? profile.favoritePCs : teams;
   const publicUrl = `cardroster.app/${profile.handle || "cardroster"}`;
+  const activeCards = allCards.filter((card) => card.saleStatus !== "Sold");
+  const tradeCards = allCards.filter((card) => card.status === "For Trade");
+  const listedCards = allCards.filter((card) => card.saleStatus === "Listed");
+  const soldCards = allCards.filter((card) => card.saleStatus === "Sold");
+  const vaultValue = activeCards.reduce((total, card) => total + cardValue(card), 0);
+  const recentCards = allCards.slice(0, 6);
 
   function updateProfile(updates: Partial<CollectorProfile>) {
     onProfileChange({ ...profile, ...updates });
@@ -1879,32 +1890,36 @@ function PlatformPreview({
   }
 
   return (
-    <section className="mx-auto grid max-w-[1440px] gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+    <section className="mx-auto grid max-w-[1500px] gap-4 px-4 py-4 sm:px-6 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="grid gap-4">
-        <div className="overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(135deg,rgba(255,255,255,0.075),rgba(255,255,255,0.014))] shadow-2xl">
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(135deg,rgba(21,27,36,0.95),rgba(13,17,26,0.96))] shadow-2xl">
           <div
-            className="h-28 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.01))]"
+            className="h-32 bg-[linear-gradient(120deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))]"
             style={{
-              backgroundImage: `radial-gradient(circle at 18% 30%, ${accent}44, transparent 26%), radial-gradient(circle at 78% 18%, rgba(56,213,255,0.22), transparent 28%), linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.01))`,
+              borderTop: `4px solid ${accent}`,
             }}
           />
           <div className="p-6">
-            <div className="-mt-16 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-              <div className="flex items-end gap-4">
+            <div className="-mt-20 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
                 <div
-                  className="grid h-24 w-24 place-items-center rounded-3xl border-4 border-[#111722] text-2xl font-black text-white shadow-2xl"
+                  className="grid h-28 w-28 place-items-center rounded-3xl border-4 border-[#111722] text-3xl font-black text-white shadow-2xl"
                   style={{ backgroundColor: accent }}
                 >
                   {profile.avatarInitials || "CR"}
                 </div>
                 <div className="pb-1">
                   <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">
-                    {isProfile ? "Collector profile" : "Chase board"}
+                    {isProfile ? "Collector profile" : "Wishlist board"}
                   </p>
-                  <h2 className="mt-1 text-4xl font-black leading-tight sm:text-5xl">
+                  <h2 className="mt-1 text-4xl font-black leading-tight text-white sm:text-5xl">
                     {isProfile ? collectionName : "Cards to chase"}
                   </h2>
-                  <p className="mt-1 text-sm font-bold text-sky-200">@{profile.handle}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-sm font-bold text-slate-400">
+                    <span>@{profile.handle}</span>
+                    <span className="text-slate-600">/</span>
+                    <span>{publicUrl}</span>
+                  </div>
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1923,16 +1938,15 @@ function PlatformPreview({
                 </button>
               </div>
             </div>
-            <div className="mt-5 grid max-w-2xl gap-2 sm:grid-cols-3">
-              <MiniStat label="Cards" value={allCards.length.toString()} />
-              <MiniStat label="Public vaults" value={publicVaults.length.toString()} />
-              <MiniStat label={isProfile ? "Followers" : "Chases"} value={isProfile ? "0" : profileCards.length.toString()} />
+            <div className="mt-6 grid gap-2 sm:grid-cols-4">
+              <ProfileStat label="Cards" value={allCards.length.toString()} />
+              <ProfileStat label="Vault value" value={formatMoney(vaultValue)} />
+              <ProfileStat label="Favorites" value={favoriteCards.length.toString()} />
+              <ProfileStat label={isProfile ? "Trade shelf" : "Chases"} value={isProfile ? tradeCards.length.toString() : profileCards.length.toString()} />
             </div>
-            {isProfile ? (
-              <p className="mt-4 max-w-3xl text-sm font-bold leading-6 text-slate-300">
-                {profile.bio}
-              </p>
-            ) : null}
+            <p className="mt-5 max-w-3xl text-sm font-bold leading-6 text-slate-300">
+              {isProfile ? profile.bio : "Track cards you want next, compare them against the vault, and keep your collecting goals visible."}
+            </p>
             <div className="mt-5 flex flex-wrap gap-2">
               {(favoritePCs.length ? favoritePCs : ["Blue Jays PC", "Rookie cards", "Trade bait"]).map((team) => (
                 <span key={team} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-black text-slate-200">
@@ -1940,82 +1954,110 @@ function PlatformPreview({
                 </span>
               ))}
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {["Theme: Arena", "Banner: Team glow", "Shelf: Featured first"].map((item) => (
-                <span key={item} className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-black text-slate-300">
-                  {item}
-                </span>
-              ))}
-            </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-                {isProfile ? "Featured shelf" : "Wishlist shelf"}
-              </p>
-              <h3 className="mt-1 text-2xl font-black">
-                {isProfile ? "Showcase cards" : "Cards to chase"}
-              </h3>
-            </div>
-            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
-              {profileCards.length} shown
-            </span>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {profileCards.map((card) => (
-              <div key={card.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
-                <div className="mx-auto h-48">
-                  <CardPreview
-                    accent={accent}
-                    borderStyle={card.borderStyle ?? "Soft"}
-                    card={card}
-                    frameStyle={card.frameStyle ?? "Card"}
-                    imageFit="contain"
-                  />
-                </div>
-                <p className="mt-3 truncate text-sm font-black text-white">{card.player}</p>
-                <p className="truncate text-xs font-bold text-slate-500">{card.collection}</p>
-              </div>
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#151b24] shadow-xl">
+          <div className="flex flex-wrap items-center gap-1 border-b border-white/10 bg-black/20 p-2">
+            {(["Overview", "Shelf", "Market", "Edit"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setProfileTab(tab)}
+                className={`h-9 rounded-lg px-4 text-xs font-black transition ${
+                  profileTab === tab ? "text-white" : "text-slate-400 hover:bg-white/10 hover:text-slate-200"
+                }`}
+                style={profileTab === tab ? { backgroundColor: accent } : undefined}
+              >
+                {tab}
+              </button>
             ))}
-            {profileCards.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-white/10 p-6 text-sm font-bold text-slate-400">
-                Add cards to make this section useful.
-              </div>
-            ) : null}
           </div>
-        </div>
 
-        {isProfile ? (
-          <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
-            <ProfilePanel title="Public vaults">
-              <div className="grid gap-2">
-                {(visibleCollections.length ? visibleCollections : ["Main Collection"]).map((item) => (
-                  <div key={item} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                    <div>
-                      <p className="text-sm font-black text-white">{item}</p>
-                      <p className="mt-1 text-xs font-bold text-slate-500">
-                        {allCards.filter((card) => card.collection === item).length || allCards.length} cards
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => togglePublicCollection(item)}
-                      className={`rounded-full px-3 py-1 text-[11px] font-black ${
-                        publicVaults.includes(item)
-                          ? "text-white"
-                          : "border border-white/10 bg-white/5 text-slate-300"
-                      }`}
-                      style={publicVaults.includes(item) ? { backgroundColor: accent } : undefined}
-                    >
-                      {publicVaults.includes(item) ? "Public" : "Private"}
-                    </button>
+          {profileTab === "Overview" ? (
+            <div className="grid gap-4 p-4">
+              <section>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+                      Featured shelf
+                    </p>
+                    <h3 className="mt-1 text-2xl font-black text-white">
+                      {isProfile ? "Cards that define the vault" : "Cards to chase"}
+                    </h3>
                   </div>
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-300">
+                    {profileCards.length} shown
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                  {profileCards.map((card) => (
+                    <ProfileShelfCard key={card.id} accent={accent} card={card} />
+                  ))}
+                  {profileCards.length === 0 ? (
+                    <ProfileEmptyState text="Favorite a few cards or add wishlist cards to build this shelf." />
+                  ) : null}
+                </div>
+              </section>
+
+              <section className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
+                <ProfilePanel title="Recent activity">
+                  <div className="grid gap-2">
+                    {recentCards.map((card, index) => (
+                      <ProfileActivityRow
+                        key={card.id}
+                        accent={accent}
+                        card={card}
+                        label={index === 0 ? "Featured pickup" : index % 2 ? "Added to vault" : "Updated display"}
+                      />
+                    ))}
+                    {recentCards.length === 0 ? (
+                      <ProfileEmptyState text="Upload cards and this becomes your collector activity feed." />
+                    ) : null}
+                  </div>
+                </ProfilePanel>
+                <ProfilePanel title="Collector notes">
+                  <p className="text-sm font-bold leading-6 text-slate-300">{profile.bio}</p>
+                  <div className="mt-4 grid gap-2">
+                    <MarketplaceSignal label="Public vaults" value={publicVaults.length.toString()} />
+                    <MarketplaceSignal label="Listed cards" value={listedCards.length.toString()} />
+                    <MarketplaceSignal label="Sold cards" value={soldCards.length.toString()} />
+                  </div>
+                </ProfilePanel>
+              </section>
+            </div>
+          ) : null}
+
+          {profileTab === "Shelf" ? (
+            <div className="grid gap-4 p-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {allCards.map((card) => (
+                  <ProfileShelfCard key={card.id} accent={accent} card={card} wide />
                 ))}
+                {allCards.length === 0 ? (
+                  <ProfileEmptyState text="Your public display gallery will appear here once cards are uploaded." />
+                ) : null}
               </div>
-            </ProfilePanel>
-            <ProfilePanel title="Profile settings">
+            </div>
+          ) : null}
+
+          {profileTab === "Market" ? (
+            <div className="grid gap-4 p-4 xl:grid-cols-3">
+              <ProfilePanel title="Trade shelf">
+                <ProfileCardList accent={accent} cards={tradeCards} emptyText="Mark cards For Trade to show them here." />
+              </ProfilePanel>
+              <ProfilePanel title="Listed cards">
+                <ProfileCardList accent={accent} cards={listedCards} emptyText="Cards marked Listed will appear here." />
+              </ProfilePanel>
+              <ProfilePanel title="Sold archive">
+                <ProfileCardList accent={accent} cards={soldCards} emptyText="Sold cards become a clean archive here." />
+              </ProfilePanel>
+            </div>
+          ) : null}
+
+          {profileTab === "Edit" ? (
+            <div className="grid gap-4 p-4 xl:grid-cols-[0.9fr_1fr]">
+              <ProfilePanel title="Profile settings">
               <div className="grid gap-3">
                 <EditField label="Handle">
                   <input
@@ -2050,12 +2092,38 @@ function PlatformPreview({
                   />
                 </EditField>
               </div>
-            </ProfilePanel>
-          </div>
-        ) : null}
+              </ProfilePanel>
+              <ProfilePanel title="Public vaults">
+                <div className="grid gap-2">
+                  {(visibleCollections.length ? visibleCollections : ["Main Collection"]).map((item) => (
+                    <div key={item} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                      <div>
+                        <p className="text-sm font-black text-white">{item}</p>
+                        <p className="mt-1 text-xs font-bold text-slate-500">
+                          {allCards.filter((card) => card.collection === item).length || allCards.length} cards
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => togglePublicCollection(item)}
+                        className={`rounded-full px-3 py-1 text-[11px] font-black ${
+                          publicVaults.includes(item)
+                            ? "text-white"
+                            : "border border-white/10 bg-white/5 text-slate-300"
+                        }`}
+                        style={publicVaults.includes(item) ? { backgroundColor: accent } : undefined}
+                      >
+                        {publicVaults.includes(item) ? "Public" : "Private"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </ProfilePanel>
+            </div>
+          ) : null}
+        </div>
       </div>
 
-      <aside className="grid h-fit gap-4">
+      <aside className="grid h-fit gap-4 xl:sticky xl:top-20">
         <CollectorProfileCard
           accent={accent}
           cardCount={allCards.length}
@@ -2064,20 +2132,135 @@ function PlatformPreview({
           vaultCount={publicVaults.length}
         />
         <CollectorSearchPanel accent={accent} />
-        <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
-          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-            Links and proof
-          </p>
-          <div className="mt-3 grid gap-2">
-            {["Marketplace link", "Social contact", "Ownership proof"].map((item) => (
-              <div key={item} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-bold text-slate-300">
-                {item}
-              </div>
-            ))}
+        <ProfilePanel title="Profile signals">
+          <div className="grid gap-2">
+            <MarketplaceSignal label="Vault value" value={formatMoney(vaultValue)} />
+            <MarketplaceSignal label="Favorites" value={favoriteCards.length.toString()} />
+            <MarketplaceSignal label="For trade" value={tradeCards.length.toString()} />
+            <MarketplaceSignal label="Listed" value={listedCards.length.toString()} />
           </div>
-        </div>
+        </ProfilePanel>
       </aside>
     </section>
+  );
+}
+
+function ProfileStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+      <p className="text-2xl font-black text-white">{value}</p>
+      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function ProfileShelfCard({
+  accent,
+  card,
+  wide = false,
+}: {
+  accent: string;
+  card: Card;
+  wide?: boolean;
+}) {
+  const value = cardValue(card);
+
+  return (
+    <article className="group overflow-hidden rounded-2xl border border-white/10 bg-[#0d111a] shadow-xl transition hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)]">
+      <div className={`${wide ? "h-72" : "h-56"} border-b border-white/10 bg-black/25 p-3`}>
+        <CardPreview
+          accent={accent}
+          borderStyle={card.borderStyle ?? "Soft"}
+          card={card}
+          frameStyle={card.frameStyle ?? "Card"}
+          imageFit="cover"
+          tight
+        />
+      </div>
+      <div className="p-3">
+        <p className="truncate text-base font-black text-white">{card.player}</p>
+        <p className="mt-1 truncate text-xs font-bold text-slate-400">{card.team || card.sport}</p>
+        <p className="mt-2 line-clamp-2 min-h-9 text-xs font-bold leading-5 text-slate-200">
+          {cardSubtitle(card)}
+        </p>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <span className="text-lg font-black text-emerald-300">
+            {value ? formatMoney(value) : ""}
+          </span>
+          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black text-slate-300">
+            {card.status}
+          </span>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ProfileActivityRow({
+  accent,
+  card,
+  label,
+}: {
+  accent: string;
+  card: Card;
+  label: string;
+}) {
+  return (
+    <div className="grid grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-2">
+      <div className="h-14 overflow-hidden rounded-lg border border-white/10 bg-black/25">
+        <CardPreview
+          accent={accent}
+          borderStyle={card.borderStyle ?? "Soft"}
+          card={card}
+          frameStyle={card.frameStyle ?? "Card"}
+          imageFit="cover"
+          tight
+        />
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-black text-white">{label}</p>
+        <p className="mt-0.5 truncate text-xs font-bold text-slate-500">
+          {card.player} / {cardSubtitle(card)}
+        </p>
+      </div>
+      <span className="text-sm font-black text-emerald-300">
+        {cardValue(card) ? formatMoney(cardValue(card)) : ""}
+      </span>
+    </div>
+  );
+}
+
+function ProfileCardList({
+  accent,
+  cards,
+  emptyText,
+}: {
+  accent: string;
+  cards: Card[];
+  emptyText: string;
+}) {
+  return (
+    <div className="grid gap-2">
+      {cards.slice(0, 6).map((card) => (
+        <ProfileActivityRow
+          key={card.id}
+          accent={accent}
+          card={card}
+          label={card.status === "For Trade" ? "Available for trade" : card.saleStatus ?? "Market card"}
+        />
+      ))}
+      {cards.length === 0 ? <ProfileEmptyState text={emptyText} /> : null}
+    </div>
+  );
+}
+
+function ProfileEmptyState({ text }: { text: string }) {
+  return (
+    <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] p-5 text-sm font-bold leading-6 text-slate-400">
+      {text}
+    </div>
   );
 }
 
@@ -3275,7 +3458,7 @@ function MiniStat({
       <span className="block truncate text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
         {label}
       </span>
-      <span className={`mt-1 block truncate text-sm font-black ${muted ? "text-slate-300" : "text-white"}`}>
+      <span className={`mt-1 block truncate text-base font-black ${muted ? "text-slate-300" : "text-white"}`}>
         {value}
       </span>
     </div>
@@ -3498,6 +3681,8 @@ function CardTile({
 }) {
   const value = cardValue(card);
   const highlighted = isPremiumCard(card);
+  const tileFrameStyle = card.frameStyle ?? "Card";
+  const tileAccent = card.color || accent;
   const visibleTags = sanitizeTags(card.tags).filter((tag) =>
     ["Rookie", "Auto", "Patch", "Favorite"].includes(tag),
   );
@@ -3557,15 +3742,22 @@ function CardTile({
           : "flex flex-col"
       }`}
     >
-      <div className={`relative overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] ${mode === "Showcase" ? "h-[320px]" : "h-[300px]"}`}>
-        <TileCardImage
-          card={card}
-          accent={accent}
-          sizes={mode === "Showcase" ? "320px" : "300px"}
-        />
+      <div className={`relative grid place-items-center overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] p-4 ${mode === "Showcase" ? "h-[320px]" : "h-[300px]"}`}>
+        <div
+          className={`${frameShellClass(tileFrameStyle)} relative h-full max-h-full aspect-[5/7]`}
+          style={frameShellStyle(tileFrameStyle, tileAccent)}
+        >
+          <div className={`relative h-full overflow-hidden rounded-lg ${imageWindowClass(tileFrameStyle)} ${innerFrameClass(tileFrameStyle)}`}>
+            <TileCardImage
+              card={card}
+              accent={accent}
+              sizes={mode === "Showcase" ? "320px" : "300px"}
+            />
+          </div>
+        </div>
         <div
           className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-1"
-          style={{ backgroundColor: card.color || accent }}
+          style={{ backgroundColor: tileAccent }}
         />
       </div>
       <div
@@ -3580,7 +3772,7 @@ function CardTile({
             {card.player}
           </p>
           <p className={`${mode === "Showcase" ? "mt-2 text-sm" : "mt-1 truncate text-sm"} font-bold leading-5 text-slate-400`}>
-            {card.year} {card.brand}
+            {card.team || card.sport}
           </p>
         </div>
         <p className={`${mode === "Showcase" ? "mt-5 text-base leading-7" : "mt-3 line-clamp-2 text-sm leading-5"} font-bold text-slate-100`}>
@@ -3611,7 +3803,7 @@ function CardTile({
             ) : null}
           </div>
           <div className="mt-3 flex items-center justify-between gap-3">
-            <span className="text-sm font-black text-emerald-300">
+            <span className="text-xl font-black text-emerald-300">
               {value ? formatMoney(value) : ""}
             </span>
             <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
@@ -3664,7 +3856,7 @@ function TileCardImage({
       fill
       unoptimized
       sizes={sizes}
-      className="object-contain"
+      className="object-cover"
       style={{
         objectPosition: imagePosition(card),
         transform: `${imageScaleTransform(card)} ${imageRotateTransform(card)}`,
@@ -3988,13 +4180,39 @@ function cardValue(card: Card) {
 }
 
 function cardSubtitle(card: Card) {
-  const set = card.set && card.brand && card.set.includes(card.brand)
-    ? card.set
-    : [card.brand, card.set].filter(Boolean).join(" ");
+  const year = cleanMetaPart(card.year);
+  const brand = cleanMetaPart(card.brand);
+  const set = removeDuplicateMeta(cleanMetaPart(card.set), [year, brand]);
+  const parallel = cleanMetaPart(card.parallel);
+  const cardNumber = cleanCardNumber(card.cardNumber);
 
-  return [card.year, set, card.cardNumber ? `#${card.cardNumber}` : ""]
+  return [year, brand, set, cardNumber ? `#${cardNumber}` : "", parallel]
     .filter(Boolean)
     .join(" ");
+}
+
+function cleanMetaPart(value?: string) {
+  return (value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanCardNumber(value?: string) {
+  return cleanMetaPart(value).replace(/^#+/, "");
+}
+
+function removeDuplicateMeta(value: string, previousParts: string[]) {
+  let next = value;
+
+  for (const part of previousParts.filter(Boolean)) {
+    next = next.replace(new RegExp(`^${escapeRegExp(part)}\\s+`, "i"), "");
+  }
+
+  return next.replace(/\s+/g, " ").trim();
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function isDisplayGrade(grade?: string) {
@@ -4081,6 +4299,70 @@ function TagRow({ compact = false, tags }: { compact?: boolean; tags: CardTag[] 
       ))}
     </div>
   );
+}
+
+function StylePicker({
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  options: string[];
+  value: string;
+}) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+        {label}
+      </p>
+      <div className="grid gap-2">
+        {options.map((option) => {
+          const active = option === value;
+
+          return (
+            <button
+              key={option}
+              type="button"
+              onClick={() => onChange(option)}
+              className={`grid grid-cols-[44px_minmax(0,1fr)] items-center gap-3 rounded-lg border p-2 text-left transition ${
+                active
+                  ? "border-[#ff5533]/60 bg-[#ff5533]/10 text-white"
+                  : "border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/[0.06]"
+              }`}
+            >
+              <span className={`h-12 rounded-md ${stylePreviewClass(option)}`} />
+              <span>
+                <span className="block text-xs font-black">{option}</span>
+                <span className="mt-0.5 block text-[10px] font-bold text-slate-500">
+                  {styleDescription(option)}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function stylePreviewClass(option: string) {
+  if (option === "Gradient") return "bg-[linear-gradient(135deg,#ff5533,#f8e71c,#20e3b2,#38bdf8,#ec4899)]";
+  if (option === "Sunset") return "bg-[linear-gradient(135deg,#ff5533,#ffb703,#fb7185,#38bdf8)]";
+  if (option === "Stand") return "border border-white/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.34),rgba(255,255,255,0.06))]";
+  if (option === "Chrome") return "border border-cyan-100/40 bg-[linear-gradient(145deg,rgba(255,255,255,0.24),rgba(56,189,248,0.14),rgba(255,255,255,0.04))]";
+  if (option === "Glow") return "border border-[#ff5533]/40 bg-[radial-gradient(circle_at_50%_0%,rgba(255,85,51,0.30),rgba(255,255,255,0.04))]";
+  return "border border-white/10 bg-[#111722]";
+}
+
+function styleDescription(option: string) {
+  if (option === "Gradient") return "bright collector border";
+  if (option === "Sunset") return "warm color frame";
+  if (option === "Stand") return "display stand";
+  if (option === "Chrome") return "metal finish";
+  if (option === "Glow") return "accent glow";
+  return "clean card edge";
 }
 
 function ColorSwatches({
