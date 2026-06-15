@@ -46,6 +46,8 @@ type SoldCompsResponse = {
   nearMatches: NearMatch[];
 };
 
+const compsCache = new Map<string, SoldCompsResponse>();
+
 export function SoldComps({
   card,
   compact = false,
@@ -78,6 +80,7 @@ export function SoldComps({
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
       if (!canFetch || !queryString) {
         setData(null);
@@ -85,19 +88,31 @@ export function SoldComps({
         return;
       }
 
+      const cached = compsCache.get(queryString);
+      if (cached) {
+        setData(cached);
+        setError("");
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
       setError("");
 
       try {
-        const response = await fetch(`/api/ebay/comps?${queryString}`);
+        const response = await fetch(`/api/ebay/comps?${queryString}`, {
+          signal: controller.signal,
+        });
         const body = await response.json();
 
         if (!response.ok) {
           throw new Error(body.error ?? "Unable to load eBay comps.");
         }
 
+        compsCache.set(queryString, body);
         if (!cancelled) setData(body);
       } catch (loadError) {
+        if (controller.signal.aborted) return;
         if (!cancelled) {
           setData(null);
           setError(
@@ -113,6 +128,7 @@ export function SoldComps({
 
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearTimeout(timeout);
     };
   }, [canFetch, queryString]);

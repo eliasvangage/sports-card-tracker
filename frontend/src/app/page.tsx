@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { SoldComps } from "@/components/SoldComps";
@@ -119,10 +119,6 @@ export default function Home() {
     return readFrameStyle(localStorage.getItem("cardroster.frameStyle"));
   });
   const [sortMode, setSortMode] = useState<SortMode>("Newest");
-  const [showMoney, setShowMoney] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return localStorage.getItem("cardroster.showMoney") !== "false";
-  });
   const [query, setQuery] = useState("");
   const [sport, setSport] = useState("All");
   const [status, setStatus] = useState("All");
@@ -168,6 +164,7 @@ export default function Home() {
     return localStorage.getItem("cardroster.grailId") ?? "";
   });
   const [storageUsageMB, setStorageUsageMB] = useState(() => getStorageUsageMB());
+  const didLoadCards = useRef(false);
 
   useEffect(() => {
     localStorage.setItem("cardroster.collectionName", collectionName);
@@ -198,16 +195,25 @@ export default function Home() {
   }, [grailId]);
 
   useEffect(() => {
-    localStorage.setItem("cardroster.showMoney", String(showMoney));
-  }, [showMoney]);
-
-  useEffect(() => {
     const refreshStorageUsage = window.setTimeout(() => {
       setStorageUsageMB(getStorageUsageMB());
     }, 0);
 
     return () => window.clearTimeout(refreshStorageUsage);
   }, [savedCards, savedCollections, collectionName, collectorProfile]);
+
+  useEffect(() => {
+    if (!didLoadCards.current) {
+      didLoadCards.current = true;
+      return;
+    }
+
+    const persistCards = window.setTimeout(() => {
+      localStorage.setItem("cardroster.cards", JSON.stringify(savedCards));
+    }, 250);
+
+    return () => window.clearTimeout(persistCards);
+  }, [savedCards]);
 
   const activeTheme = themes[theme];
   const allCards = savedCards;
@@ -286,7 +292,6 @@ export default function Home() {
   function deleteCard(id: string) {
     const nextCards = savedCards.filter((card) => card.id !== id);
     setSavedCards(nextCards);
-    localStorage.setItem("cardroster.cards", JSON.stringify(nextCards));
     setSelectedId(nextCards[0]?.id ?? "");
   }
 
@@ -295,7 +300,6 @@ export default function Home() {
       card.id === id ? { ...card, ...updates } : card,
     );
     setSavedCards(nextCards);
-    localStorage.setItem("cardroster.cards", JSON.stringify(nextCards));
   }
 
   function exportCards() {
@@ -533,7 +537,6 @@ export default function Home() {
           onOpenCard={(card) => setDetailId(card.id)}
           onOpenCollection={() => setActiveSection("Collection")}
           portfolioGain={portfolioGain}
-          showMoney={showMoney}
           soldValue={soldValue}
         />
       ) : null}
@@ -586,31 +589,15 @@ export default function Home() {
                 >
                   Showcase
                 </button>
-                <button
-                  onClick={() => setShowMoney((current) => !current)}
-                  className="inline-flex h-10 items-center rounded-md border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
-                >
-                  {showMoney ? "Hide values" : "Show values"}
-                </button>
               </div>
-              <div className={`mt-5 grid max-w-2xl gap-2 ${showMoney ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
+              <div className="mt-5 grid max-w-2xl gap-2 sm:grid-cols-4">
                 <HeroMetric label="Cards saved" value={allCards.length.toString()} />
-                {showMoney ? (
-                  <>
-                    <HeroMetric
-                      label="Collection value"
-                      value={formatMoney(inventoryValue)}
-                    />
-                    <HeroMetric label="Cost basis" value={formatMoney(costBasis)} />
-                    <HeroMetric label="Sold" value={formatMoney(soldValue)} />
-                  </>
-                ) : (
-                  <>
-                    <HeroMetric label="Collections" value={(collections.length - 1).toString()} />
-                    <HeroMetric label="Shown" value={filteredCards.length.toString()} />
-                    <HeroMetric label="Chase list" value={chaseCards.length.toString()} />
-                  </>
-                )}
+                <HeroMetric
+                  label="Collection value"
+                  value={formatMoney(inventoryValue)}
+                />
+                <HeroMetric label="Cost basis" value={formatMoney(costBasis)} />
+                <HeroMetric label="Sold" value={formatMoney(soldValue)} />
               </div>
             </div>
 
@@ -880,10 +867,8 @@ export default function Home() {
                   card={card}
                   accent={activeTheme.accent}
                   borderStyle={card.borderStyle ?? borderStyle}
-                  frameStyle={card.frameStyle ?? frameStyle}
                   mode={displayMode}
                   selected={selectedCard?.id === card.id}
-                  showMoney={showMoney}
                   onClick={() => setSelectedId(card.id)}
                   onDoubleClick={() => setDetailId(card.id)}
                 />
@@ -930,7 +915,7 @@ export default function Home() {
                   <div className="mt-3 grid grid-cols-3 gap-2">
                     <MiniStat
                       label="Value"
-                      value={showMoney ? formatMoney(cardValue(selectedCard)) : "Private"}
+                      value={formatMoney(cardValue(selectedCard))}
                     />
                     <MiniStat label="Grade" value={selectedCard.grade || "Raw"} />
                     <MiniStat label="Status" value={selectedCard.status} />
@@ -945,7 +930,7 @@ export default function Home() {
                       onClick={() => setStudioTab(tab)}
                       className={`h-8 flex-1 rounded-md text-[11px] font-black transition ${
                         studioTab === tab
-                          ? "bg-white text-[#111722]"
+                          ? "bg-[#ff5533] text-white"
                           : "text-slate-300 hover:bg-white/10"
                       }`}
                     >
@@ -1054,7 +1039,7 @@ export default function Home() {
                         {cardTags.map((tag) => {
                           const active = selectedCard.tags?.includes(tag) ?? false;
                           return (
-                            <button key={tag} type="button" onClick={() => updateCard(selectedCard.id, { tags: toggleTag(selectedCard.tags, tag) })} className={`h-8 rounded-full px-3 text-[11px] font-black transition ${active ? "bg-white text-[#111722]" : "border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}>
+                            <button key={tag} type="button" onClick={() => updateCard(selectedCard.id, { tags: toggleTag(selectedCard.tags, tag) })} className={`h-8 rounded-full px-3 text-[11px] font-black transition ${active ? "bg-[#ff5533] text-white" : "border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}>
                               {tag}
                             </button>
                           );
@@ -1086,49 +1071,43 @@ export default function Home() {
                   </div>
                 ) : null}
                 {studioTab === "Market" ? (
-                  showMoney ? (
-                    <div className="grid gap-2">
-                      <div className="grid grid-cols-2 gap-2">
-                        <EditField label="Value">
-                          <input value={selectedCard.estimatedValue ?? ""} onChange={(event) => updateCard(selectedCard.id, { estimatedValue: event.target.value })} className="studio-field" placeholder="$0" />
-                        </EditField>
-                        <EditField label="Cost">
-                          <input value={selectedCard.purchasePrice ?? ""} onChange={(event) => updateCard(selectedCard.id, { purchasePrice: event.target.value })} className="studio-field" placeholder="$0" />
-                        </EditField>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <EditField label="Sale status">
-                          <select value={selectedCard.saleStatus ?? "Holding"} onChange={(event) => updateCard(selectedCard.id, { saleStatus: event.target.value as Card["saleStatus"] })} className="studio-field">
-                            <option>Holding</option>
-                            <option>Listed</option>
-                            <option>Sold</option>
-                          </select>
-                        </EditField>
-                        <EditField label="Sold for">
-                          <input value={selectedCard.salePrice ?? ""} onChange={(event) => updateCard(selectedCard.id, { salePrice: event.target.value })} className="studio-field" placeholder="$0" />
+                  <div className="grid gap-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <EditField label="Value">
+                        <input value={selectedCard.estimatedValue ?? ""} onChange={(event) => updateCard(selectedCard.id, { estimatedValue: event.target.value })} className="studio-field" placeholder="$0" />
+                      </EditField>
+                      <EditField label="Cost">
+                        <input value={selectedCard.purchasePrice ?? ""} onChange={(event) => updateCard(selectedCard.id, { purchasePrice: event.target.value })} className="studio-field" placeholder="$0" />
+                      </EditField>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <EditField label="Sale status">
+                        <select value={selectedCard.saleStatus ?? "Holding"} onChange={(event) => updateCard(selectedCard.id, { saleStatus: event.target.value as Card["saleStatus"] })} className="studio-field">
+                          <option>Holding</option>
+                          <option>Listed</option>
+                          <option>Sold</option>
+                        </select>
+                      </EditField>
+                      <EditField label="Sold for">
+                        <input value={selectedCard.salePrice ?? ""} onChange={(event) => updateCard(selectedCard.id, { salePrice: event.target.value })} className="studio-field" placeholder="$0" />
                       </EditField>
                     </div>
                     <EditField label="Acquired from">
                       <input value={selectedCard.acquiredFrom ?? ""} onChange={(event) => updateCard(selectedCard.id, { acquiredFrom: event.target.value })} className="studio-field" placeholder="Shop, trade, eBay, show..." />
                     </EditField>
-                      <EditField label="Target price">
-                        <input value={selectedCard.targetPrice ?? ""} onChange={(event) => updateCard(selectedCard.id, { targetPrice: event.target.value })} className="studio-field" placeholder="Wishlist target" />
-                      </EditField>
-                      <SoldComps
-                        card={selectedCard}
-                        compact
-                        onValueAccepted={(value) =>
-                          updateCard(selectedCard.id, {
-                            estimatedValue: formatMoney(value),
-                          })
-                        }
-                      />
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm font-bold text-slate-400">
-                      Value tracking is hidden for this roster.
-                    </div>
-                  )
+                    <EditField label="Target price">
+                      <input value={selectedCard.targetPrice ?? ""} onChange={(event) => updateCard(selectedCard.id, { targetPrice: event.target.value })} className="studio-field" placeholder="Wishlist target" />
+                    </EditField>
+                    <SoldComps
+                      card={selectedCard}
+                      compact
+                      onValueAccepted={(value) =>
+                        updateCard(selectedCard.id, {
+                          estimatedValue: formatMoney(value),
+                        })
+                      }
+                    />
+                  </div>
                 ) : null}
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -1181,7 +1160,6 @@ export default function Home() {
               filteredCards[(currentIndex - 1 + filteredCards.length) % filteredCards.length];
             if (nextCard) setDetailId(nextCard.id);
           }}
-          showMoney={showMoney}
         />
       ) : null}
       {showcaseOpen ? (
@@ -1206,7 +1184,7 @@ function displayModeClasses(mode: DisplayMode) {
     return "grid gap-4";
   }
 
-  return "grid auto-rows-fr justify-center gap-4 [grid-template-columns:repeat(auto-fill,minmax(200px,260px))]";
+  return "grid auto-rows-fr justify-center gap-4 [grid-template-columns:repeat(auto-fit,minmax(220px,260px))]";
 }
 
 function CollectionQuickNav({
@@ -1661,7 +1639,6 @@ function InsightsHome({
   onOpenCard,
   onOpenCollection,
   portfolioGain,
-  showMoney,
   soldValue,
 }: {
   accent: string;
@@ -1677,7 +1654,6 @@ function InsightsHome({
   onOpenCard: (card: Card) => void;
   onOpenCollection: () => void;
   portfolioGain: number;
-  showMoney: boolean;
   soldValue: number;
 }) {
   const displayCards = favoriteCards.length ? favoriteCards : allCards.slice(0, 5);
@@ -1707,14 +1683,12 @@ function InsightsHome({
                 Collection value
               </p>
               <p className="mt-3 text-4xl font-black text-white">
-                {showMoney ? formatMoney(inventoryValue) : "Private"}
+                {formatMoney(inventoryValue)}
               </p>
-              {showMoney ? (
-                <p className={`mt-2 text-sm font-black ${portfolioGain >= 0 ? "text-emerald-300" : "text-red-300"}`}>
-                  {portfolioGain >= 0 ? "+" : ""}
-                  {formatMoney(portfolioGain)} all-time
-                </p>
-              ) : null}
+              <p className={`mt-2 text-sm font-black ${portfolioGain >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                {portfolioGain >= 0 ? "+" : ""}
+                {formatMoney(portfolioGain)} all-time
+              </p>
               <button
                 onClick={onOpenCollection}
                 className="mt-5 h-10 w-full rounded-md text-sm font-black text-white"
@@ -1813,8 +1787,8 @@ function InsightsHome({
 
       <aside className="grid h-fit gap-4">
         <DashboardPanel title="Portfolio">
-          <MiniStat label="Cost basis" value={showMoney ? formatMoney(costBasis) : "Private"} />
-          <MiniStat label="Sold total" value={showMoney ? formatMoney(soldValue) : "Private"} />
+          <MiniStat label="Cost basis" value={formatMoney(costBasis)} />
+          <MiniStat label="Sold total" value={formatMoney(soldValue)} />
           <MiniStat label="Wishlist" value={chaseCards.length.toString()} />
         </DashboardPanel>
         <DashboardPanel title="Recent activity">
@@ -2803,7 +2777,6 @@ function CardDetailModal({
   onClose,
   onNext,
   onPrevious,
-  showMoney,
 }: {
   accent: string;
   borderStyle: BorderStyle;
@@ -2812,7 +2785,6 @@ function CardDetailModal({
   onClose: () => void;
   onNext: () => void;
   onPrevious: () => void;
-  showMoney: boolean;
 }) {
   if (!card) return null;
   const value = cardValue(card);
@@ -2871,26 +2843,24 @@ function CardDetailModal({
               {card.collection}
             </span>
           </div>
-          {showMoney ? (
-            <div className="mt-5 rounded-2xl border border-white/10 bg-black/25 p-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                Market value
+          <div className="mt-5 rounded-2xl border border-white/10 bg-black/25 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+              Market value
+            </p>
+            <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
+              <p className="text-4xl font-black text-white">{formatMoney(value)}</p>
+              <p className={`text-sm font-black ${gain >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                {moneyValue(card.purchasePrice)
+                  ? `${gain >= 0 ? "+" : ""}${formatMoney(gain)} vs cost`
+                  : "Add cost to track gain"}
               </p>
-              <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
-                <p className="text-4xl font-black text-white">{formatMoney(value)}</p>
-                <p className={`text-sm font-black ${gain >= 0 ? "text-emerald-300" : "text-red-300"}`}>
-                  {moneyValue(card.purchasePrice)
-                    ? `${gain >= 0 ? "+" : ""}${formatMoney(gain)} vs cost`
-                    : "Add cost to track gain"}
-                </p>
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <Detail label="Cost" value={formatMoney(moneyValue(card.purchasePrice))} />
-                <Detail label="Sale" value={card.saleStatus ?? "Holding"} />
-                <Detail label="Sold" value={formatMoney(moneyValue(card.salePrice))} />
-              </div>
             </div>
-          ) : null}
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <Detail label="Cost" value={formatMoney(moneyValue(card.purchasePrice))} />
+              <Detail label="Sale" value={card.saleStatus ?? "Holding"} />
+              <Detail label="Sold" value={formatMoney(moneyValue(card.salePrice))} />
+            </div>
+          </div>
           {card.notes ? (
             <p className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4 text-sm font-bold leading-6 text-slate-300">
               {card.notes}
@@ -3506,22 +3476,18 @@ function CardTile({
   accent,
   borderStyle,
   card,
-  frameStyle,
   mode,
   onClick,
   onDoubleClick,
   selected,
-  showMoney,
 }: {
   accent: string;
   borderStyle: BorderStyle;
   card: Card;
-  frameStyle: FrameStyle;
   mode: DisplayMode;
   onClick: () => void;
   onDoubleClick: () => void;
   selected: boolean;
-  showMoney: boolean;
 }) {
   const value = cardValue(card);
   const highlighted = isPremiumCard(card);
@@ -3542,8 +3508,7 @@ function CardTile({
         }`}
       >
         <div className="relative h-14 w-10 overflow-hidden rounded-md border border-white/10 bg-[#151b24]">
-          {highlighted ? <div className="holo-shimmer pointer-events-none absolute inset-0 z-10 opacity-25" /> : null}
-          <EditedCardImage card={card} sizes="40px" accent={accent} />
+          <TileCardImage card={card} sizes="40px" accent={accent} />
         </div>
         <div className="min-w-0">
           <p className="truncate text-sm font-black text-white">{card.player}</p>
@@ -3553,7 +3518,7 @@ function CardTile({
           {isDisplayGrade(card.grade) ? card.grade : "Raw"}
         </span>
         <span className="hidden text-right text-xs font-black text-white md:block">
-          {showMoney && value ? formatMoney(value) : ""}
+          {value ? formatMoney(value) : ""}
         </span>
         <div className="flex items-center gap-2 justify-self-end">
           <span
@@ -3577,8 +3542,8 @@ function CardTile({
     <button
       onClick={onClick}
       onDoubleClick={onDoubleClick}
-      className={`group h-full overflow-hidden rounded-2xl border bg-[linear-gradient(145deg,#151b24,#0d111a)] p-3 text-left transition duration-150 ease-out hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)] ${selectedClass} ${
-        highlighted ? "holo-border" : ""
+      className={`group h-full overflow-hidden rounded-2xl border bg-[linear-gradient(145deg,#151b24,#0d111a)] p-3 text-left transition duration-150 ease-out [contain-intrinsic-size:420px] [content-visibility:auto] hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)] ${selectedClass} ${
+        highlighted ? "ring-1 ring-[#ff5533]/25" : ""
       } ${tileBorderAccentClass(borderStyle)} ${
         mode === "Showcase"
           ? "grid items-center gap-5 sm:grid-cols-[320px_minmax(0,1fr)]"
@@ -3586,26 +3551,22 @@ function CardTile({
       }`}
     >
       <div className={`relative overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] ${mode === "Showcase" ? "h-[320px]" : "h-[230px]"}`}>
-        {highlighted ? <div className="holo-shimmer pointer-events-none absolute inset-0 z-10 opacity-20" /> : null}
         {card.status === "For Trade" ? (
           <div className="pointer-events-none absolute right-2 top-2 z-20 rounded-full bg-[#ff5533] px-2 py-1 text-[9px] font-black text-white shadow-[0_0_20px_rgba(255,85,51,0.25)]">
             FOR TRADE
           </div>
         ) : null}
-        {showMoney && value ? (
+        {value ? (
           <div className={`pointer-events-none absolute z-20 rounded-full border border-emerald-300/20 bg-emerald-300/15 px-2 py-1 text-[10px] font-black text-emerald-100 backdrop-blur ${
             card.status === "For Trade" ? "right-2 top-9" : "right-2 top-2"
           }`}>
             {formatMoney(value)}
           </div>
         ) : null}
-        <CardPreview
-          key={`${card.id}-${card.imageX ?? 50}-${card.imageY ?? 50}-${card.imageZoom ?? 100}-${card.imageRotation ?? 0}`}
+        <TileCardImage
           card={card}
           accent={accent}
-          borderStyle={borderStyle}
-          frameStyle={readFrameStyle(card.frameStyle ?? frameStyle)}
-          large={mode === "Showcase"}
+          sizes={mode === "Showcase" ? "320px" : "260px"}
         />
       </div>
       <div
@@ -3647,7 +3608,7 @@ function CardTile({
           </div>
           <div className="mt-3 flex items-center justify-between gap-3">
             <span className="text-sm font-black text-emerald-300">
-              {showMoney && value ? formatMoney(value) : ""}
+              {value ? formatMoney(value) : ""}
             </span>
             <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
               <span
@@ -3665,6 +3626,47 @@ function CardTile({
         </div>
       </div>
     </button>
+  );
+}
+
+function TileCardImage({
+  accent,
+  card,
+  sizes,
+}: {
+  accent: string;
+  card: Card;
+  sizes: string;
+}) {
+  const title = [card.player, card.team].filter(Boolean).join(" | ");
+
+  if (!card.imageUrl) {
+    return (
+      <div className="grid h-full w-full place-items-center bg-[#0d111a] p-3">
+        <div
+          className="grid size-16 place-items-center rounded-full text-lg font-black text-white"
+          style={{ backgroundColor: card.color || accent }}
+        >
+          {cardInitials(card.player)}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Image
+      src={card.imageUrl}
+      alt={title || "Card image"}
+      fill
+      unoptimized
+      sizes={sizes}
+      className="object-contain"
+      style={{
+        objectPosition: imagePosition(card),
+        transform: `${imageScaleTransform(card)} ${imageRotateTransform(card)}`,
+        transformOrigin: imagePosition(card),
+      }}
+    />
   );
 }
 
@@ -3739,6 +3741,17 @@ function CardPreview({
       </div>
     </div>
   );
+}
+
+function cardInitials(value: string) {
+  const initials = value
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("");
+
+  return initials || "CR";
 }
 
 function MiniWallPreview({ accent, card }: { accent: string; card: Card }) {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { EbayConfigError, getEbayAppToken } from "@/lib/ebay";
 import { checkRateLimit, requestIdentifier } from "@/lib/rate-limit";
 
 type CompSource = "sold" | "active";
@@ -26,6 +27,16 @@ type FindingItem = {
   }>;
   title?: string[];
   viewItemURL?: string[];
+};
+
+type BrowseItem = {
+  condition?: string;
+  image?: { imageUrl?: string };
+  itemCreationDate?: string;
+  itemEndDate?: string;
+  itemWebUrl?: string;
+  price?: { value?: string };
+  title?: string;
 };
 
 type RawComp = {
@@ -91,8 +102,15 @@ export async function GET(request: Request) {
   }
 
   try {
-    const soldComps = await findComps(query, "sold");
-    const activeComps = soldComps.length < 3 ? await findComps(query, "active") : [];
+    let soldComps: RawComp[] = [];
+
+    try {
+      soldComps = await findFindingComps(query, "sold");
+    } catch {
+      soldComps = [];
+    }
+
+    const activeComps = soldComps.length < 3 ? await findActiveComps(query) : [];
     const allComps = dedupeComps([...soldComps, ...activeComps]);
     const soldCount = soldComps.length;
     const filtered = removeOutliers(allComps);
@@ -117,10 +135,15 @@ export async function GET(request: Request) {
         .slice(0, 6),
       nearMatches: filtered.nearMatches,
     } satisfies CompResponse);
-  } catch {
+  } catch (error) {
     return NextResponse.json(
-      { error: "Unable to connect to eBay comps right now." },
-      { status: 502 },
+      {
+        error:
+          error instanceof EbayConfigError
+            ? "eBay comps need EBAY_CLIENT_ID and EBAY_CLIENT_SECRET configured on the server."
+            : "Unable to connect to eBay comps right now. Try again, or open the manual sold search below.",
+      },
+      { status: error instanceof EbayConfigError ? 501 : 502 },
     );
   }
 }
@@ -152,22 +175,26 @@ function bestBrandPhrase(fields: CardFields) {
   return fields.brand || fields.set.split(" ").slice(0, 2).join(" ");
 }
 
-async function findComps(query: string, source: CompSource) {
+async function findFindingComps(query: string, source: CompSource) {
   const appId = process.env.EBAY_APP_ID || process.env.EBAY_CLIENT_ID;
   if (!appId) {
-    throw new Error("Missing eBay app id.");
+    throw new EbayConfigError();
   }
 
   const operationName = source === "sold" ? "findCompletedItems" : "findItemsAdvanced";
   const params = new URLSearchParams({
+    "GLOBAL-ID": "EBAY-US",
     "OPERATION-NAME": operationName,
+    "REST-PAYLOAD": "",
     "RESPONSE-DATA-FORMAT": "JSON",
     "SECURITY-APPNAME": appId,
     "SERVICE-VERSION": "1.0.0",
     categoryId: "212",
     keywords: query,
     "itemFilter(0).name": "ListingType",
-    "itemFilter(0).value": "AuctionWithBIN,FixedPrice,Auction",
+    "itemFilter(0).value(0)": "AuctionWithBIN",
+    "itemFilter(0).value(1)": "FixedPrice",
+    "itemFilter(0).value(2)": "Auction",
     "paginationInput.entriesPerPage": entriesPerPage,
     sortOrder: "EndTimeSoonest",
   });
@@ -187,13 +214,73 @@ async function findComps(query: string, source: CompSource) {
   }
 
   const body = (await response.json()) as Record<string, Array<{
+    ack?: string[];
+    errorMessage?: Array<{ error?: Array<{ message?: string[] }> }>;
     searchResult?: Array<{ item?: FindingItem[] }>;
   }> | undefined>;
   const responseKey =
     source === "sold" ? "findCompletedItemsResponse" : "findItemsAdvancedResponse";
-  const items = body[responseKey]?.[0]?.searchResult?.[0]?.item ?? [];
+  const apiResponse = body[responseKey]?.[0];
+
+  if (apiResponse?.ack?.[0] === "Failure") {
+    throw new Error(apiResponse.errorMessage?.[0]?.error?.[0]?.message?.[0] ?? "eBay Finding API failed.");
+  }
+
+  const items = apiResponse?.searchResult?.[0]?.item ?? [];
 
   return items.map((item) => toComp(item, source)).filter(isRawComp);
+}
+
+async function findActiveComps(query: string) {
+  try {
+    return await findFindingComps(query, "active");
+  } catch {
+    return findBrowseActiveComps(query);
+  }
+}
+
+async function findBrowseActiveComps(query: string) {
+  const token = await getEbayAppToken();
+  const params = new URLSearchParams({
+    category_ids: "212",
+    limit: entriesPerPage,
+    q: query,
+  });
+  const response = await fetch(
+    `https://api.ebay.com/buy/browse/v1/item_summary/search?${params.toString()}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+      },
+      next: { revalidate: 60 },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error("eBay Browse API did not return results.");
+  }
+
+  const body = (await response.json()) as { itemSummaries?: BrowseItem[] };
+  return (body.itemSummaries ?? []).map(toBrowseComp).filter(isRawComp);
+}
+
+function toBrowseComp(item: BrowseItem): RawComp | null {
+  const price = Number(item.price?.value);
+  const title = item.title?.trim() ?? "";
+  const url = item.itemWebUrl ?? "";
+
+  if (!title || !url || !Number.isFinite(price) || price <= 0) return null;
+
+  return {
+    condition: item.condition ?? "",
+    endDate: item.itemEndDate ?? item.itemCreationDate ?? "",
+    imageUrl: item.image?.imageUrl ?? "",
+    price: Math.round(price * 100) / 100,
+    source: "active",
+    title,
+    url,
+  };
 }
 
 function toComp(item: FindingItem, source: CompSource): RawComp | null {
