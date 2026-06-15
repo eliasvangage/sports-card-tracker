@@ -95,7 +95,7 @@ function fieldsFromAspects(aspects: Record<string, string>): Record<FieldName, I
     set: aspectField(cleanSetName(firstAspect(aspects, ["Set", "Product"]))),
     sport: aspectField(firstAspect(aspects, ["Sport"])),
     team: aspectField(firstAspect(aspects, ["Team"])),
-    year: aspectField(firstAspect(aspects, ["Season", "Year", "Year Manufactured"])),
+    year: aspectField(cleanYearValue(firstAspect(aspects, ["Season", "Year", "Year Manufactured"]))),
   };
 }
 
@@ -195,9 +195,14 @@ function cleanAspectValue(value: string) {
 
 function cleanSetName(value: string) {
   return cleanAspectValue(value)
-    .replace(/\b(19[8-9]\d|20[0-3]\d)\b/g, "")
+    .replace(/\b(19[8-9]\d|20[0-3]\d)(?:-\d{2})?\b/g, "")
     .replace(/\s+/g, " ")
+    .replace(/^\s*[-:]+\s*/, "")
     .trim();
+}
+
+function cleanYearValue(value: string) {
+  return cleanAspectValue(value).match(/\b(19[8-9]\d|20[0-3]\d)(?:-\d{2})?\b/)?.[1] ?? "";
 }
 
 function normalizeAspectGrade(grader: string, grade: string) {
@@ -247,7 +252,7 @@ function gradeFromTitle(title: string) {
 }
 
 function yearFromTitle(title: string) {
-  const value = title.match(/\b(19[8-9]\d|20[0-3]\d)(?:-\d{2})?\b/)?.[0] ?? "";
+  const value = title.match(/\b(19[8-9]\d|20[0-3]\d)(?:-\d{2})?\b/)?.[1] ?? "";
   return titleField(value, value ? 0.95 : 0);
 }
 
@@ -411,6 +416,8 @@ const brandMap = [
 ];
 
 const parallelMap = [
+  { name: "Eastern Stars", keywords: [" EASTERN STARS "] },
+  { name: "Western Stars", keywords: [" WESTERN STARS "] },
   { name: "Superfractor /1", keywords: [" SUPERFRACTOR "] },
   { name: "Gold Refractor", keywords: [" GOLD REFRACTOR "] },
   { name: "Gold", keywords: [" GOLD "] },
@@ -441,6 +448,7 @@ const setPatterns = [
   { name: "National Treasures", keywords: [" NATIONAL TREASURES "] },
   { name: "SP Authentic", keywords: [" SP AUTHENTIC "] },
   { name: "Stadium Club", keywords: [" STADIUM CLUB "] },
+  { name: "Upper Deck MVP", keywords: [" UPPER DECK MVP ", " UD MVP "] },
   { name: "Upper Deck", keywords: [" UPPER DECK "] },
   { name: "Series 1", keywords: [" SERIES 1 "] },
   { name: "Series 2", keywords: [" SERIES 2 "] },

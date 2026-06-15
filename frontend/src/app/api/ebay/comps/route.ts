@@ -150,6 +150,7 @@ function bestIdentityPhrase(fields: CardFields) {
   const combined = `${fields.brand} ${set}`.toLowerCase();
 
   if (combined.includes("topps chrome black")) return "Topps Chrome Black";
+  if (combined.includes("upper deck mvp")) return "Upper Deck MVP";
   if (combined.includes("bowman chrome")) return "Bowman Chrome";
   if (combined.includes("bowman draft")) return "Bowman Draft";
   if (combined.includes("topps chrome")) return "Topps Chrome";
@@ -263,7 +264,7 @@ function isRelevantComp(title: string, fields: CardFields) {
   }
   if (cardNumber && !titleHasCardNumber(normalizedTitle, cardNumber)) return false;
 
-  if (isBaseCard(fields) && hasBaseMismatchSignal(title, normalizedTitle)) {
+  if (isBaseCard(fields) && hasBaseMismatchSignal(title, normalizedTitle, cardNumber)) {
     return false;
   }
   if (isBaseParallel(fields.parallel) && hasNonBaseParallel(normalizedTitle)) {
@@ -317,8 +318,11 @@ function titleHasCardNumber(normalizedTitle: string, cardNumber: string) {
   const cleanNumber = normalizeCardNumber(cardNumber);
   if (!cleanNumber) return true;
 
-  const escaped = cleanNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^|\\s)${escaped}(\\s|$)`, "i").test(normalizedTitle);
+  const numberTokens = normalizeForMatch(cleanNumber).split(" ").filter(Boolean);
+  if (!numberTokens.length) return true;
+
+  const escaped = numberTokens.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`(^|\\s)${escaped.join("\\s+")}(\\s|$)`, "i").test(normalizedTitle);
 }
 
 function hasNonBaseParallel(normalizedTitle: string) {
@@ -341,11 +345,11 @@ function hasNumberedSignal(lowerTitle: string) {
   );
 }
 
-function hasBaseMismatchSignal(rawTitle: string, normalizedTitle: string) {
+function hasBaseMismatchSignal(rawTitle: string, normalizedTitle: string, cardNumber: string) {
   return (
     hasInsertSignal(normalizedTitle) ||
     hasPatchSignal(normalizedTitle) ||
-    hasInsertCardCode(rawTitle) ||
+    hasMismatchedInsertCardCode(rawTitle, cardNumber) ||
     hasNumberedSignal(rawTitle.toLowerCase())
   );
 }
@@ -356,8 +360,12 @@ function hasInsertSignal(normalizedTitle: string) {
   );
 }
 
-function hasInsertCardCode(rawTitle: string) {
-  return /#\s*[a-z]{1,6}-\d{1,5}\b|\b[a-z]{1,6}-\d{1,5}\b/i.test(rawTitle);
+function hasMismatchedInsertCardCode(rawTitle: string, cardNumber: string) {
+  const insertCode = rawTitle.match(/#\s*([a-z]{1,6}-\d{1,5})\b|\b([a-z]{1,6}-\d{1,5})\b/i);
+  if (!insertCode) return false;
+
+  const foundCode = normalizeCardNumber(insertCode[1] ?? insertCode[2] ?? "");
+  return Boolean(foundCode && (!cardNumber || foundCode !== cardNumber));
 }
 
 function hasTag(fields: CardFields, tag: string) {
