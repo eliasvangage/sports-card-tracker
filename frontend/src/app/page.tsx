@@ -149,7 +149,7 @@ export default function Home() {
     if (typeof window === "undefined") return [];
     const cards = JSON.parse(localStorage.getItem("cardroster.cards") ?? "[]") as Card[];
     return cards.map((card) => ({
-      ...card,
+      ...normalizeCardIdentity(card),
       collection: card.collection ?? "Main Collection",
       frameStyle: readFrameStyle(card.frameStyle ?? null),
       tags: sanitizeTags(card.tags),
@@ -218,33 +218,53 @@ export default function Home() {
 
   const activeTheme = themes[theme];
   const allCards = savedCards;
-  const sports = ["All", ...Array.from(new Set(allCards.map((card) => card.sport)))];
+  const collectionStats = useMemo(() => {
+    const activeCards = allCards.filter((card) => card.saleStatus !== "Sold");
+    const chaseCards = allCards.filter((card) => card.isChase);
+    const inventoryValue = activeCards.reduce((total, card) => total + cardValue(card), 0);
+    const costBasis = activeCards.reduce((total, card) => total + moneyValue(card.purchasePrice), 0);
+    const soldValue = allCards.reduce((total, card) => total + moneyValue(card.salePrice), 0);
+
+    return {
+      activeCards,
+      autoCount: allCards.filter((card) => card.tags?.includes("Auto")).length,
+      biggestCard: activeCards.toSorted((a, b) => cardValue(b) - cardValue(a))[0],
+      chaseCards,
+      costBasis,
+      gradedCount: allCards.filter((card) => card.grade && card.grade !== "Raw").length,
+      inventoryValue,
+      numberedCount: allCards.filter((card) => card.tags?.includes("Numbered")).length,
+      portfolioGain: inventoryValue - costBasis,
+      soldValue,
+      tradeCards: allCards.filter((card) => card.status === "For Trade"),
+    };
+  }, [allCards]);
+  const sports = useMemo(
+    () => ["All", ...Array.from(new Set(allCards.map((card) => card.sport).filter(Boolean)))],
+    [allCards],
+  );
   const statuses = ["All", "Vaulted", "Wishlist", "For Trade"];
-  const collections = [
-    "All",
-    ...Array.from(
-      new Set([...savedCollections, ...allCards.map((card) => card.collection)]),
-    ),
-  ];
-  const activeCards = allCards.filter((card) => card.saleStatus !== "Sold");
-  const chaseCards = allCards.filter((card) => card.isChase);
-  const inventoryValue = activeCards.reduce(
-    (total, card) => total + cardValue(card),
-    0,
+  const collections = useMemo(
+    () => [
+      "All",
+      ...Array.from(
+        new Set([...savedCollections, ...allCards.map((card) => card.collection)]),
+      ),
+    ],
+    [allCards, savedCollections],
   );
-  const costBasis = activeCards.reduce(
-    (total, card) => total + moneyValue(card.purchasePrice),
-    0,
-  );
-  const soldValue = allCards.reduce(
-    (total, card) => total + moneyValue(card.salePrice),
-    0,
-  );
-  const gradedCount = allCards.filter((card) => card.grade && card.grade !== "Raw").length;
-  const autoCount = allCards.filter((card) => card.tags?.includes("Auto")).length;
-  const numberedCount = allCards.filter((card) => card.tags?.includes("Numbered")).length;
-  const biggestCard = activeCards.toSorted((a, b) => cardValue(b) - cardValue(a))[0];
-  const portfolioGain = inventoryValue - costBasis;
+  const {
+    autoCount,
+    biggestCard,
+    chaseCards,
+    costBasis,
+    gradedCount,
+    inventoryValue,
+    numberedCount,
+    portfolioGain,
+    soldValue,
+    tradeCards,
+  } = collectionStats;
 
   const filteredCards = useMemo(() => {
     const search = deferredQuery.toLowerCase().trim();
@@ -288,16 +308,23 @@ export default function Home() {
     allCards.find((card) => card.id === selectedId) ??
     filteredCards[0];
   const grailCard = allCards.find((card) => card.id === grailId) ?? allCards[0];
-  const favoriteCards = allCards
-    .filter((card) => card.tags?.includes("Favorite") && card.id !== grailCard?.id)
-    .slice(0, 5);
-  const tradeCards = allCards.filter((card) => card.status === "For Trade");
-  const coverCards = [
-    ...favoriteCards,
-    ...allCards
-      .filter((card) => !favoriteCards.some((favorite) => favorite.id === card.id))
-      .toSorted((a, b) => cardValue(b) - cardValue(a)),
-  ].slice(0, 3);
+  const favoriteCards = useMemo(
+    () =>
+      allCards
+        .filter((card) => card.tags?.includes("Favorite") && card.id !== grailCard?.id)
+        .slice(0, 5),
+    [allCards, grailCard?.id],
+  );
+  const coverCards = useMemo(
+    () =>
+      [
+        ...favoriteCards,
+        ...allCards
+          .filter((card) => !favoriteCards.some((favorite) => favorite.id === card.id))
+          .toSorted((a, b) => cardValue(b) - cardValue(a)),
+      ].slice(0, 3),
+    [allCards, favoriteCards],
+  );
   function deleteCard(id: string) {
     const nextCards = savedCards.filter((card) => card.id !== id);
     setSavedCards(nextCards);
@@ -2808,34 +2835,70 @@ function CollectorWorkbench({
   onOpenCard: (card: Card) => void;
   onOpenCollection: () => void;
 }) {
-  const [inventoryFilter, setInventoryFilter] = useState<"All" | "Holding" | "Listed" | "Sold">("All");
+  const [inventoryFilter, setInventoryFilter] = useState<"Seller" | "PC" | "Holding" | "Listed" | "Sold">("Seller");
   const [inventorySort, setInventorySort] = useState<"Profit" | "Value" | "Newest" | "Cost">("Profit");
-  const tradeCards = cards.filter((card) => card.status === "For Trade");
-  const missingStorage = cards.filter((card) => !card.storageLocation).length;
-  const missingNumbers = cards.filter((card) => !card.cardNumber).length;
-  const withLinks = cards.filter((card) => card.sourceUrl).length;
-  const listedCards = cards.filter((card) => card.saleStatus === "Listed");
-  const soldCards = cards.filter((card) => card.saleStatus === "Sold");
-  const activeCards = cards.filter((card) => card.saleStatus !== "Sold");
-  const totalCost = cards.reduce((total, card) => total + cardAllInCost(card), 0);
-  const activeValue = activeCards.reduce((total, card) => total + cardValue(card), 0);
-  const grossRevenue = soldCards.reduce((total, card) => total + moneyValue(card.salePrice), 0);
-  const realizedProfit = soldCards.reduce(
-    (total, card) => total + moneyValue(card.salePrice) - cardAllInCost(card),
-    0,
+  const [displayCurrency, setDisplayCurrency] = useState<"CAD" | "USD">("CAD");
+  const [feeRate, setFeeRate] = useState(13);
+  const [shippingCost, setShippingCost] = useState(0);
+  const money = (value: number) => formatMoney(value, displayCurrency);
+  const sellerStats = useMemo(() => {
+    const tradeCards = cards.filter((card) => card.status === "For Trade");
+    const listedCards = cards.filter((card) => card.saleStatus === "Listed");
+    const soldCards = cards.filter((card) => card.saleStatus === "Sold");
+    const pcCards = cards.filter(isPcVaultCard);
+    const sellerCards = cards.filter((card) => !isPcVaultCard(card));
+    const activeSellerCards = sellerCards.filter((card) => card.saleStatus !== "Sold");
+
+    return {
+      activeValue: activeSellerCards.reduce((total, card) => total + cardValue(card), 0),
+      expectedProfit: activeSellerCards.reduce(
+        (total, card) => total + sellerNetAmount(cardValue(card), feeRate, shippingCost) - cardAllInCost(card),
+        0,
+      ),
+      grossRevenue: soldCards.reduce((total, card) => total + moneyValue(card.salePrice), 0),
+      listedCards,
+      missingNumbers: cards.filter((card) => !card.cardNumber).length,
+      missingStorage: cards.filter((card) => !card.storageLocation).length,
+      pcCards,
+      realizedProfit: soldCards.reduce(
+        (total, card) => total + sellerNetAmount(moneyValue(card.salePrice), feeRate, shippingCost) - cardAllInCost(card),
+        0,
+      ),
+      soldCards,
+      totalCost: sellerCards.reduce((total, card) => total + cardAllInCost(card), 0),
+      tradeCards,
+      withLinks: cards.filter((card) => card.sourceUrl).length,
+    };
+  }, [cards, feeRate, shippingCost]);
+  const filteredInventory = useMemo(
+    () =>
+      cards
+        .filter((card) => {
+          if (inventoryFilter === "Seller") return !isPcVaultCard(card);
+          if (inventoryFilter === "PC") return isPcVaultCard(card);
+          return !isPcVaultCard(card) && (card.saleStatus ?? "Holding") === inventoryFilter;
+        })
+        .toSorted((a, b) => {
+          if (inventorySort === "Value") return cardValue(b) - cardValue(a);
+          if (inventorySort === "Cost") return cardAllInCost(b) - cardAllInCost(a);
+          if (inventorySort === "Newest") return b.id.localeCompare(a.id);
+          return sellerProfit(b, feeRate, shippingCost) - sellerProfit(a, feeRate, shippingCost);
+        }),
+    [cards, feeRate, inventoryFilter, inventorySort, shippingCost],
   );
-  const activeSpread = activeCards.reduce(
-    (total, card) => total + cardValue(card) - cardAllInCost(card),
-    0,
-  );
-  const filteredInventory = cards
-    .filter((card) => inventoryFilter === "All" || (card.saleStatus ?? "Holding") === inventoryFilter)
-    .toSorted((a, b) => {
-      if (inventorySort === "Value") return cardValue(b) - cardValue(a);
-      if (inventorySort === "Cost") return cardAllInCost(b) - cardAllInCost(a);
-      if (inventorySort === "Newest") return b.id.localeCompare(a.id);
-      return sellerProfit(b) - sellerProfit(a);
-    });
+  const {
+    activeValue,
+    expectedProfit,
+    grossRevenue,
+    listedCards,
+    missingNumbers,
+    missingStorage,
+    pcCards,
+    realizedProfit,
+    totalCost,
+    tradeCards,
+    withLinks,
+  } = sellerStats;
 
   return (
     <section className="mx-auto grid max-w-[1500px] gap-4 px-4 py-4 sm:px-6 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -2856,7 +2919,7 @@ function CollectorWorkbench({
                 Inventory, listings, and profit in one clean sheet.
               </h2>
               <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-300">
-                Track cost, grading fees, eBay listing status, sale price, and margin without turning the vault into a spreadsheet.
+                Track sellable inventory separately from PC vault cards, with cost, estimated net, listing status, and sale margin.
               </p>
               <div className="mt-6 flex flex-wrap gap-2">
                 <button
@@ -2878,8 +2941,8 @@ function CollectorWorkbench({
             <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Seller summary</p>
               <div className="mt-3 grid gap-2">
-                <MarketplaceSignal label="Realized profit" value={formatMoney(realizedProfit)} />
-                <MarketplaceSignal label="Active spread" value={formatMoney(activeSpread)} />
+                <MarketplaceSignal label="Realized profit" value={money(realizedProfit)} />
+                <MarketplaceSignal label="Expected profit" value={money(expectedProfit)} />
                 <MarketplaceSignal label="Listed" value={listedCards.length.toString()} />
               </div>
             </div>
@@ -2887,11 +2950,11 @@ function CollectorWorkbench({
         </div>
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <WorkbenchMetric label="Active value" value={formatMoney(activeValue)} />
-          <WorkbenchMetric label="Total cost" value={formatMoney(totalCost)} />
-          <WorkbenchMetric label="Revenue" value={formatMoney(grossRevenue)} />
-          <WorkbenchMetric label="Profit" value={formatMoney(realizedProfit)} tone={realizedProfit >= 0 ? "good" : "bad"} />
-          <WorkbenchMetric label="Listed" value={listedCards.length.toString()} />
+          <WorkbenchMetric label="Seller value" value={money(activeValue)} />
+          <WorkbenchMetric label="Seller cost" value={money(totalCost)} />
+          <WorkbenchMetric label="Revenue" value={money(grossRevenue)} />
+          <WorkbenchMetric label="Realized profit" value={money(realizedProfit)} tone={realizedProfit >= 0 ? "good" : "bad"} />
+          <WorkbenchMetric label="PC vault" value={pcCards.length.toString()} />
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#151b24] shadow-2xl">
@@ -2903,7 +2966,7 @@ function CollectorWorkbench({
               <h3 className="mt-1 text-2xl font-black text-white">{collectionName} seller sheet</h3>
             </div>
             <div className="flex flex-wrap gap-2">
-              {(["All", "Holding", "Listed", "Sold"] as const).map((filter) => (
+              {(["Seller", "PC", "Holding", "Listed", "Sold"] as const).map((filter) => (
                 <button
                   key={filter}
                   onClick={() => setInventoryFilter(filter)}
@@ -2942,7 +3005,10 @@ function CollectorWorkbench({
                 key={card.id}
                 accent={accent}
                 card={card}
+                feeRate={feeRate}
+                money={money}
                 onOpen={() => onOpenCard(card)}
+                shippingCost={shippingCost}
               />
             ))}
             {filteredInventory.length === 0 ? (
@@ -2958,12 +3024,52 @@ function CollectorWorkbench({
         <CollectorProfileCard accent={accent} cardCount={cards.length} collectionName={collectionName} />
         <ProfilePanel title="Seller actions">
           <div className="grid gap-2">
+            <div className="grid grid-cols-2 gap-2">
+              {(["CAD", "USD"] as const).map((currency) => (
+                <button
+                  key={currency}
+                  onClick={() => setDisplayCurrency(currency)}
+                  className={`h-9 rounded-lg px-3 text-xs font-black ${
+                    displayCurrency === currency ? "text-white" : "border border-white/10 bg-white/5 text-slate-300"
+                  }`}
+                  style={displayCurrency === currency ? { backgroundColor: accent } : undefined}
+                >
+                  {currency}
+                </button>
+              ))}
+            </div>
             <button onClick={onExport} disabled={cards.length === 0} className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10 disabled:opacity-40">
               Export inventory
             </button>
             <button onClick={onOpenCollection} className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10">
               Edit cards
             </button>
+          </div>
+        </ProfilePanel>
+        <ProfilePanel title="Selling assumptions">
+          <div className="grid gap-3">
+            <EditField label="eBay fee %">
+              <input
+                type="number"
+                min={0}
+                max={40}
+                value={feeRate}
+                onChange={(event) => setFeeRate(Number(event.target.value) || 0)}
+                className="studio-field"
+              />
+            </EditField>
+            <EditField label={`Shipping (${displayCurrency})`}>
+              <input
+                type="number"
+                min={0}
+                value={shippingCost}
+                onChange={(event) => setShippingCost(Number(event.target.value) || 0)}
+                className="studio-field"
+              />
+            </EditField>
+            <p className="text-xs font-bold leading-5 text-slate-500">
+              Applied as a quick estimate per card. Exact per-listing fees can become a premium ledger field later.
+            </p>
           </div>
         </ProfilePanel>
         <ProfilePanel title="Data hygiene">
@@ -3015,16 +3121,24 @@ function WorkbenchMetric({
 function SellerInventoryRow({
   accent,
   card,
+  feeRate,
+  money,
   onOpen,
+  shippingCost,
 }: {
   accent: string;
   card: Card;
+  feeRate: number;
+  money: (value: number) => string;
   onOpen: () => void;
+  shippingCost: number;
 }) {
   const cost = cardAllInCost(card);
   const value = cardValue(card);
   const sold = moneyValue(card.salePrice);
-  const profit = sellerProfit(card);
+  const pcCard = isPcVaultCard(card);
+  const netValue = pcCard ? value : sellerNetAmount(sold || value, feeRate, shippingCost);
+  const profit = sellerProfit(card, feeRate, shippingCost);
   const saleStatus = card.saleStatus ?? "Holding";
 
   return (
@@ -3048,10 +3162,16 @@ function SellerInventoryRow({
         </div>
       </div>
 
-      <SellerMoneyBlock label="Cost" value={cost} />
-      <SellerMoneyBlock label="Ask/value" value={value} />
-      <SellerMoneyBlock label="Sold" muted={!sold} value={sold} />
-      <SellerMoneyBlock label="Profit" tone={profit >= 0 ? "good" : "bad"} value={profit} />
+      <SellerMoneyBlock label="Cost" money={money} value={cost} />
+      <SellerMoneyBlock label={pcCard ? "PC value" : "Net est."} money={money} value={netValue} />
+      <SellerMoneyBlock label="Sold" money={money} muted={!sold} value={sold} />
+      <SellerMoneyBlock
+        label={pcCard ? "Vault" : saleStatus === "Sold" ? "Profit" : "Expected"}
+        money={money}
+        muted={pcCard}
+        tone={pcCard ? "neutral" : profit >= 0 ? "good" : "bad"}
+        value={pcCard ? value : profit}
+      />
       <div className="hidden lg:block">
         <SellerStatusBadge status={saleStatus} />
         <p className="mt-1 truncate text-[10px] font-bold text-slate-500">
@@ -3064,11 +3184,13 @@ function SellerInventoryRow({
 
 function SellerMoneyBlock({
   label,
+  money,
   muted = false,
   tone = "neutral",
   value,
 }: {
   label: string;
+  money: (value: number) => string;
   muted?: boolean;
   tone?: "neutral" | "good" | "bad";
   value: number;
@@ -3088,7 +3210,7 @@ function SellerMoneyBlock({
         {label}
       </span>
       <span className={`text-sm font-black ${toneClass}`}>
-        {formatMoney(value)}
+        {money(value)}
       </span>
     </div>
   );
@@ -4550,15 +4672,39 @@ function cardAllInCost(card: Card) {
   return moneyValue(card.purchasePrice) + moneyValue(card.gradingFee);
 }
 
-function sellerProfit(card: Card) {
+function sellerProfit(card: Card, feeRate = 0, shippingCost = 0) {
   const basis = cardAllInCost(card);
   const saleStatus = card.saleStatus ?? "Holding";
 
   if (saleStatus === "Sold") {
-    return moneyValue(card.salePrice) - basis;
+    return sellerNetAmount(moneyValue(card.salePrice), feeRate, shippingCost) - basis;
   }
 
-  return cardValue(card) - basis;
+  return sellerNetAmount(cardValue(card), feeRate, shippingCost) - basis;
+}
+
+function sellerNetAmount(gross: number, feeRate = 0, shippingCost = 0) {
+  if (!gross) return 0;
+  return Math.max(0, gross - gross * (feeRate / 100) - shippingCost);
+}
+
+function isPcVaultCard(card: Card) {
+  return card.status === "Vaulted" && (card.saleStatus ?? "Holding") === "Holding";
+}
+
+function normalizeCardIdentity(card: Card): Card {
+  const brand = cleanMetaPart(card.brand);
+  const set = cleanMetaPart(card.set);
+  const normalizedBrand = comparableText(brand);
+  const normalizedSet = comparableText(set);
+
+  if (!brand || !set || !normalizedBrand || !normalizedSet) return card;
+  if (normalizedSet === normalizedBrand) return { ...card, set: "" };
+  if (normalizedSet.startsWith(`${normalizedBrand} `)) {
+    return { ...card, set: set.slice(brand.length).trim() };
+  }
+
+  return card;
 }
 
 function cardSubtitle(card: Card) {
@@ -4605,6 +4751,14 @@ function cleanMetaPart(value?: string) {
   return /^(none|n\/a|na|null|undefined|unknown|not specified)$/i.test(clean)
     ? ""
     : clean;
+}
+
+function comparableText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function cleanCardNumber(value?: string) {
@@ -4661,10 +4815,10 @@ function gradingDecisionText(card: Card) {
   return "Skip";
 }
 
-function formatMoney(value: number) {
-  return new Intl.NumberFormat("en-US", {
+function formatMoney(value: number, currency: "CAD" | "USD" = "CAD") {
+  return new Intl.NumberFormat(currency === "CAD" ? "en-CA" : "en-US", {
     style: "currency",
-    currency: "USD",
+    currency,
     maximumFractionDigits: 2,
     minimumFractionDigits: 2,
   }).format(value);
