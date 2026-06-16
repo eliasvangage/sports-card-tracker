@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { SoldComps } from "@/components/SoldComps";
@@ -120,6 +120,7 @@ export default function Home() {
   });
   const [sortMode, setSortMode] = useState<SortMode>("Newest");
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [sport, setSport] = useState("All");
   const [status, setStatus] = useState("All");
   const [collection, setCollection] = useState("All");
@@ -246,7 +247,7 @@ export default function Home() {
   const portfolioGain = inventoryValue - costBasis;
 
   const filteredCards = useMemo(() => {
-    const search = query.toLowerCase().trim();
+    const search = deferredQuery.toLowerCase().trim();
 
     const matches = allCards.filter((card) => {
       const matchesSearch = [
@@ -281,7 +282,7 @@ export default function Home() {
       if (sortMode === "Value") return cardValue(b) - cardValue(a);
       return 0;
     });
-  }, [allCards, collection, query, sortMode, sport, status, tagFilter]);
+  }, [allCards, collection, deferredQuery, sortMode, sport, status, tagFilter]);
 
   const selectedCard =
     allCards.find((card) => card.id === selectedId) ??
@@ -587,6 +588,14 @@ export default function Home() {
       <section className="mx-auto max-w-[1680px] px-4 py-4 sm:px-6">
         <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.025)_1px,transparent_1px),radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.08),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.055),rgba(255,255,255,0.015))] bg-[size:28px_28px,28px_28px,auto,auto] p-4 shadow-2xl sm:p-5">
           <div
+            className="pointer-events-none absolute -left-16 -top-24 h-56 w-56 rounded-full blur-3xl"
+            style={{ backgroundColor: `${activeTheme.accent}24` }}
+          />
+          <div
+            className="pointer-events-none absolute bottom-0 right-16 h-36 w-72 rounded-full blur-3xl"
+            style={{ backgroundColor: `${activeTheme.accent}18` }}
+          />
+          <div
             className="absolute inset-x-0 top-0 h-1"
             style={{ backgroundColor: activeTheme.accent }}
           />
@@ -601,6 +610,13 @@ export default function Home() {
               <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-slate-400">
                 Browse your roster, feature favorites, and tune each card like a shelf piece.
               </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {[`${collections.length - 1} vault${collections.length - 1 === 1 ? "" : "s"}`, `${filteredCards.length} showing`, `${formatMoney(inventoryValue)} total`].map((item) => (
+                  <span key={item} className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] font-black text-slate-300">
+                    {item}
+                  </span>
+                ))}
+              </div>
               <div className="mt-5 flex flex-wrap gap-2">
                 <Link
                   href="/upload"
@@ -1088,26 +1104,39 @@ export default function Home() {
                     <div className="rounded-lg border border-white/10 bg-black/20 p-3">
                       <div className="mb-3 flex items-center justify-between gap-3">
                         <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-                          Crop window
+                          Image framing
                         </p>
                         <span className="text-[10px] font-bold text-slate-500">
-                          zoom crops the gallery image
+                          center the card face
                         </span>
                       </div>
                       <div className="grid gap-3">
                       <RangeField label="Horizontal" value={selectedCard.imageX ?? 50} onChange={(value) => updateCard(selectedCard.id, { imageX: value })} />
                       <RangeField label="Vertical" value={selectedCard.imageY ?? 50} onChange={(value) => updateCard(selectedCard.id, { imageY: value })} />
-                      <RangeField label="Zoom" min={100} max={150} value={selectedCard.imageZoom ?? 100} onChange={(value) => updateCard(selectedCard.id, { imageZoom: value })} />
                       <RangeField label="Rotate" min={-180} max={180} value={selectedCard.imageRotation ?? 0} onChange={(value) => updateCard(selectedCard.id, { imageRotation: value })} />
                       </div>
-                      <div className="mt-3 grid grid-cols-3 gap-2">
+                      <div className="mt-3 grid grid-cols-4 gap-2">
+                      <button type="button" onClick={() => updateCard(selectedCard.id, { imageX: clampPercent((selectedCard.imageX ?? 50) - 5) })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                        Nudge L
+                      </button>
+                      <button type="button" onClick={() => updateCard(selectedCard.id, { imageX: clampPercent((selectedCard.imageX ?? 50) + 5) })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                        Nudge R
+                      </button>
+                      <button type="button" onClick={() => updateCard(selectedCard.id, { imageY: clampPercent((selectedCard.imageY ?? 50) - 5) })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                        Up
+                      </button>
+                      <button type="button" onClick={() => updateCard(selectedCard.id, { imageY: clampPercent((selectedCard.imageY ?? 50) + 5) })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                        Down
+                      </button>
+                      </div>
+                      <div className="mt-2 grid grid-cols-3 gap-2">
                       <button type="button" onClick={() => updateCard(selectedCard.id, { imageRotation: rotateValue(selectedCard.imageRotation ?? 0, -90) })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
                         Left
                       </button>
                       <button type="button" onClick={() => updateCard(selectedCard.id, { imageRotation: rotateValue(selectedCard.imageRotation ?? 0, 90) })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
                         Right
                       </button>
-                      <button type="button" onClick={() => updateCard(selectedCard.id, { imageX: 50, imageY: 50, imageZoom: 100, imageRotation: 0 })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                      <button type="button" onClick={() => updateCard(selectedCard.id, { imageX: 50, imageY: 50, imageRotation: 0 })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
                         Reset
                       </button>
                       </div>
@@ -3817,9 +3846,8 @@ const CardTile = memo(function CardTile({
       <button
         onClick={onClick}
         onDoubleClick={onDoubleClick}
-        className={`grid min-h-20 grid-cols-[48px_minmax(0,1fr)_56px_76px_110px] items-center gap-3 border-b border-white/5 bg-[#0d111a] px-3 py-2.5 text-left transition hover:bg-white/[0.03] max-lg:grid-cols-[48px_minmax(0,1fr)_76px] ${
-          selected ? "shadow-[inset_3px_0_0_#ff5533]" : ""
-        }`}
+        className="grid min-h-20 grid-cols-[48px_minmax(0,1fr)_56px_76px_110px] items-center gap-3 border-b border-white/5 bg-[#0d111a] px-3 py-2.5 text-left transition hover:bg-white/[0.03] max-lg:grid-cols-[48px_minmax(0,1fr)_76px]"
+        style={selected ? { boxShadow: `inset 3px 0 0 ${tileAccent}` } : undefined}
       >
         <div className="relative h-16 w-12 overflow-hidden rounded-md border border-white/10 bg-[#151b24]">
           <TileCardImage card={card} sizes="48px" accent={accent} />
@@ -3856,7 +3884,7 @@ const CardTile = memo(function CardTile({
     <button
       onClick={onClick}
       onDoubleClick={onDoubleClick}
-      className={`group h-full overflow-hidden rounded-2xl border bg-[linear-gradient(145deg,#151b24,#0d111a)] p-3 text-left transition-[transform,border-color,box-shadow] duration-100 ease-out [contain-intrinsic-size:520px] hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)] ${selectedClass} ${
+      className={`group h-full overflow-hidden rounded-2xl border bg-[linear-gradient(145deg,#151b24,#0d111a)] p-3 text-left transition-[transform,border-color,box-shadow] duration-75 ease-out [contain-intrinsic-size:520px] [content-visibility:auto] hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)] ${selectedClass} ${
         highlighted ? "ring-1 ring-white/15" : ""
       } ${tileBorderAccentClass(borderStyle)} ${
         mode === "Showcase"
@@ -3865,7 +3893,10 @@ const CardTile = memo(function CardTile({
       }`}
       style={tileSurfaceStyle(borderStyle, tileAccent, selected)}
     >
-      <div className={`relative grid place-items-center overflow-hidden rounded-xl border border-white/10 bg-[#0d111a] p-4 ${mode === "Showcase" ? "h-[330px]" : "h-[260px]"}`}>
+      <div
+        className={`relative grid place-items-center overflow-hidden rounded-xl border border-white/10 p-4 ${mode === "Showcase" ? "h-[330px]" : "h-[260px]"} ${tileImageStageClass(borderStyle)}`}
+        style={tileImageStageStyle(borderStyle, tileAccent)}
+      >
         <div
           className={`${frameShellClass(tileFrameStyle)} relative h-full max-h-full aspect-[5/7]`}
           style={frameShellStyle(tileFrameStyle, tileAccent)}
@@ -4007,7 +4038,7 @@ function TileCardImage({
       className="object-cover"
       style={{
         objectPosition: imagePosition(card),
-        transform: `${imageScaleTransform(card)} ${imageRotateTransform(card)}`,
+        transform: `${imageScaleTransform()} ${imageRotateTransform(card)}`,
         transformOrigin: imagePosition(card),
       }}
     />
@@ -4162,7 +4193,7 @@ function EditedCardImage({
       className={fit === "contain" ? "object-contain" : "object-cover"}
       style={{
         objectPosition: imagePosition(card),
-        transform: `${imageScaleTransform(card)} ${imageRotateTransform(card)}`,
+        transform: `${imageScaleTransform()} ${imageRotateTransform(card)}`,
         transformOrigin: imagePosition(card),
       }}
     />
@@ -4191,6 +4222,34 @@ function tileBorderAccentClass(borderStyle: BorderStyle) {
   }
 
   return "";
+}
+
+function tileImageStageClass(borderStyle: BorderStyle) {
+  if (borderStyle === "Chrome") {
+    return "bg-[linear-gradient(145deg,rgba(255,255,255,0.10),rgba(56,189,248,0.08),rgba(255,255,255,0.025))] shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]";
+  }
+
+  if (borderStyle === "Glow") {
+    return "bg-[radial-gradient(circle_at_50%_20%,rgba(255,255,255,0.10),transparent_42%),#0d111a]";
+  }
+
+  return "bg-[#0d111a]";
+}
+
+function tileImageStageStyle(borderStyle: BorderStyle, accent: string) {
+  if (borderStyle === "Chrome") {
+    return {
+      boxShadow: `inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 ${accent}44`,
+    };
+  }
+
+  if (borderStyle === "Glow") {
+    return {
+      boxShadow: `inset 0 0 34px ${accent}22, 0 0 28px ${accent}22`,
+    };
+  }
+
+  return undefined;
 }
 
 function tileSurfaceStyle(borderStyle: BorderStyle, accent: string, selected: boolean) {
@@ -4307,8 +4366,8 @@ function imagePosition(card: Card) {
   return `${card.imageX ?? 50}% ${card.imageY ?? 50}%`;
 }
 
-function imageScaleTransform(card: Card) {
-  return `scale(${(card.imageZoom ?? 100) / 100})`;
+function imageScaleTransform() {
+  return "scale(1)";
 }
 
 function imageRotateTransform(card: Card) {
@@ -4335,6 +4394,10 @@ function toggleTag(tags: CardTag[] | undefined, tag: CardTag) {
 function rotateValue(current: number, change: number) {
   const next = ((current + change) % 360 + 360) % 360;
   return next > 180 ? next - 360 : next;
+}
+
+function clampPercent(value: number) {
+  return Math.min(100, Math.max(0, value));
 }
 
 function sanitizeTags(tags: CardTag[] | undefined) {
@@ -4379,8 +4442,16 @@ function compactMetaPart(value: string, previousParts: string[]) {
   );
   const tokens = value.split(/\s+/).filter(Boolean);
   const compacted = tokens.filter((token) => !previousTokens.has(token.toLowerCase()));
+  const deduped = dedupeAdjacentWords(compacted.length ? compacted : tokens);
 
-  return (compacted.length ? compacted : tokens).join(" ").trim();
+  return deduped.join(" ").trim();
+}
+
+function dedupeAdjacentWords(tokens: string[]) {
+  return tokens.filter((token, index) => {
+    const previous = tokens[index - 1];
+    return !previous || previous.toLowerCase() !== token.toLowerCase();
+  });
 }
 
 function cleanMetaPart(value?: string) {
