@@ -1107,12 +1107,13 @@ export default function Home() {
                           Image framing
                         </p>
                         <span className="text-[10px] font-bold text-slate-500">
-                          center the card face
+                          center and zoom the card face
                         </span>
                       </div>
                       <div className="grid gap-3">
                       <RangeField label="Horizontal" value={selectedCard.imageX ?? 50} onChange={(value) => updateCard(selectedCard.id, { imageX: value })} />
                       <RangeField label="Vertical" value={selectedCard.imageY ?? 50} onChange={(value) => updateCard(selectedCard.id, { imageY: value })} />
+                      <RangeField label="Zoom" min={100} max={150} value={selectedCard.imageZoom ?? 100} onChange={(value) => updateCard(selectedCard.id, { imageZoom: value })} />
                       <RangeField label="Rotate" min={-180} max={180} value={selectedCard.imageRotation ?? 0} onChange={(value) => updateCard(selectedCard.id, { imageRotation: value })} />
                       </div>
                       <div className="mt-3 grid grid-cols-4 gap-2">
@@ -1136,7 +1137,7 @@ export default function Home() {
                       <button type="button" onClick={() => updateCard(selectedCard.id, { imageRotation: rotateValue(selectedCard.imageRotation ?? 0, 90) })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
                         Right
                       </button>
-                      <button type="button" onClick={() => updateCard(selectedCard.id, { imageX: 50, imageY: 50, imageRotation: 0 })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
+                      <button type="button" onClick={() => updateCard(selectedCard.id, { imageX: 50, imageY: 50, imageZoom: 100, imageRotation: 0 })} className="h-8 rounded-md border border-white/10 bg-white/5 text-xs font-black text-slate-200 hover:bg-white/10">
                         Reset
                       </button>
                       </div>
@@ -2807,146 +2808,175 @@ function CollectorWorkbench({
   onOpenCard: (card: Card) => void;
   onOpenCollection: () => void;
 }) {
-  const gradingCards = cards.filter((card) =>
-    card.status === "Wishlist" ||
-    card.grade === "Raw" ||
-    card.gradingFee ||
-    card.certNumber,
-  );
+  const [inventoryFilter, setInventoryFilter] = useState<"All" | "Holding" | "Listed" | "Sold">("All");
+  const [inventorySort, setInventorySort] = useState<"Profit" | "Value" | "Newest" | "Cost">("Profit");
   const tradeCards = cards.filter((card) => card.status === "For Trade");
   const missingStorage = cards.filter((card) => !card.storageLocation).length;
   const missingNumbers = cards.filter((card) => !card.cardNumber).length;
   const withLinks = cards.filter((card) => card.sourceUrl).length;
+  const listedCards = cards.filter((card) => card.saleStatus === "Listed");
+  const soldCards = cards.filter((card) => card.saleStatus === "Sold");
+  const activeCards = cards.filter((card) => card.saleStatus !== "Sold");
+  const totalCost = cards.reduce((total, card) => total + cardAllInCost(card), 0);
+  const activeValue = activeCards.reduce((total, card) => total + cardValue(card), 0);
+  const grossRevenue = soldCards.reduce((total, card) => total + moneyValue(card.salePrice), 0);
+  const realizedProfit = soldCards.reduce(
+    (total, card) => total + moneyValue(card.salePrice) - cardAllInCost(card),
+    0,
+  );
+  const activeSpread = activeCards.reduce(
+    (total, card) => total + cardValue(card) - cardAllInCost(card),
+    0,
+  );
+  const filteredInventory = cards
+    .filter((card) => inventoryFilter === "All" || (card.saleStatus ?? "Holding") === inventoryFilter)
+    .toSorted((a, b) => {
+      if (inventorySort === "Value") return cardValue(b) - cardValue(a);
+      if (inventorySort === "Cost") return cardAllInCost(b) - cardAllInCost(a);
+      if (inventorySort === "Newest") return b.id.localeCompare(a.id);
+      return sellerProfit(b) - sellerProfit(a);
+    });
 
   return (
-    <section className="mx-auto grid max-w-[1440px] gap-4 px-4 py-4 sm:px-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <section className="mx-auto grid max-w-[1500px] gap-4 px-4 py-4 sm:px-6 xl:grid-cols-[minmax(0,1fr)_340px]">
       <div className="grid gap-4">
-        <div className="overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_15%_0%,rgba(255,255,255,0.12),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.075),rgba(255,255,255,0.014))] p-6 shadow-2xl">
-          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">
-            Collector workbench
-          </p>
-          <h2 className="mt-2 max-w-3xl text-4xl font-black leading-tight sm:text-5xl">
-            Collection tools that keep the roster clean.
-          </h2>
-          <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-300">
-            Export, research, grading review, storage checks, and trade-ready cards in one workbench.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-2">
-            <button
-              onClick={onExport}
-              disabled={cards.length === 0}
-              className="h-10 rounded-lg px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
-              style={{ backgroundColor: accent }}
-            >
-              Export CSV
-            </button>
-            <button
-              onClick={onOpenCollection}
-              className="h-10 rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
-            >
-              Open collection
-            </button>
+        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.025)_1px,transparent_1px),radial-gradient(circle_at_15%_0%,rgba(255,85,51,0.16),transparent_34%),linear-gradient(135deg,rgba(21,27,36,0.98),rgba(13,17,26,0.96))] bg-[size:32px_32px,32px_32px,auto,auto] p-6 shadow-2xl">
+          <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: accent }} />
+          <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-center">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">
+                  Seller ledger
+                </p>
+                <span className="rounded-full border border-[#ff5533]/30 bg-[#ff5533]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-orange-100">
+                  Premium tool
+                </span>
+              </div>
+              <h2 className="mt-3 max-w-3xl text-4xl font-black leading-tight sm:text-5xl">
+                Inventory, listings, and profit in one clean sheet.
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-300">
+                Track cost, grading fees, eBay listing status, sale price, and margin without turning the vault into a spreadsheet.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-2">
+                <button
+                  onClick={onExport}
+                  disabled={cards.length === 0}
+                  className="h-10 rounded-lg px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  style={{ backgroundColor: accent }}
+                >
+                  Export seller CSV
+                </button>
+                <button
+                  onClick={onOpenCollection}
+                  className="h-10 rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black text-slate-200 hover:bg-white/10"
+                >
+                  Open gallery
+                </button>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Seller summary</p>
+              <div className="mt-3 grid gap-2">
+                <MarketplaceSignal label="Realized profit" value={formatMoney(realizedProfit)} />
+                <MarketplaceSignal label="Active spread" value={formatMoney(activeSpread)} />
+                <MarketplaceSignal label="Listed" value={listedCards.length.toString()} />
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <WorkbenchMetric label="Cards" value={cards.length.toString()} />
-          <WorkbenchMetric label="Trade ready" value={tradeCards.length.toString()} />
-          <WorkbenchMetric label="Missing location" value={missingStorage.toString()} />
-          <WorkbenchMetric label="Missing card #" value={missingNumbers.toString()} />
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <WorkbenchMetric label="Active value" value={formatMoney(activeValue)} />
+          <WorkbenchMetric label="Total cost" value={formatMoney(totalCost)} />
+          <WorkbenchMetric label="Revenue" value={formatMoney(grossRevenue)} />
+          <WorkbenchMetric label="Profit" value={formatMoney(realizedProfit)} tone={realizedProfit >= 0 ? "good" : "bad"} />
+          <WorkbenchMetric label="Listed" value={listedCards.length.toString()} />
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[1fr_0.95fr]">
-          <ProfilePanel title="Out for grading / review">
-            <div className="grid gap-2">
-              {gradingCards.slice(0, 6).map((card) => (
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#151b24] shadow-2xl">
+          <div className="flex flex-col gap-3 border-b border-white/10 bg-black/20 p-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+                Inventory list
+              </p>
+              <h3 className="mt-1 text-2xl font-black text-white">{collectionName} seller sheet</h3>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(["All", "Holding", "Listed", "Sold"] as const).map((filter) => (
                 <button
-                  key={card.id}
-                  onClick={() => onOpenCard(card)}
-                  className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-2 text-left hover:bg-white/[0.06]"
+                  key={filter}
+                  onClick={() => setInventoryFilter(filter)}
+                  className={`h-9 rounded-lg px-3 text-xs font-black transition ${
+                    inventoryFilter === filter ? "text-white" : "border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+                  }`}
+                  style={inventoryFilter === filter ? { backgroundColor: accent } : undefined}
                 >
-                  <CleanCardThumb accent={accent} card={card} />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-black text-white">{card.player}</p>
-                    <p className="truncate text-xs font-bold text-slate-500">
-                      {cardSubtitle(card)}
-                    </p>
-                  </div>
-                  <GradingDecision card={card} />
+                  {filter}
                 </button>
               ))}
-              {gradingCards.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-white/10 p-4 text-sm font-bold text-slate-400">
-                  Mark raw cards or add grading fees to build this queue.
-                </p>
-              ) : null}
+              <select
+                value={inventorySort}
+                onChange={(event) => setInventorySort(event.target.value as typeof inventorySort)}
+                className="h-9 rounded-lg border border-white/10 bg-[#0b1018] px-3 text-xs font-black text-white outline-none"
+              >
+                <option>Profit</option>
+                <option>Value</option>
+                <option>Cost</option>
+                <option>Newest</option>
+              </select>
             </div>
-          </ProfilePanel>
+          </div>
 
-          <ProfilePanel title="Lookup links">
-            <div className="grid gap-2">
-              {(cards.slice(0, 5)).map((card) => (
-                <div key={card.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                  <p className="truncate text-sm font-black text-white">{card.player}</p>
-                  <p className="mt-1 truncate text-xs font-bold text-slate-500">
-                    {cardSubtitle(card)}
-                  </p>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <LookupLink href={ebaySearchUrl(card)} label="eBay listings" />
-                    <LookupLink href={certLookupUrl(card)} label="Cert lookup" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </ProfilePanel>
-        </div>
-
-        <div className="grid gap-4 xl:grid-cols-2">
-          <ProfilePanel title="Trade and wishlist matching">
-            <div className="grid gap-2">
-              {tradeCards.slice(0, 4).map((card) => (
-                <button
-                  key={card.id}
-                  onClick={() => onOpenCard(card)}
-                  className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-left hover:bg-white/[0.06]"
-                >
-                  <p className="truncate text-sm font-black text-white">{card.player}</p>
-                  <p className="mt-1 truncate text-xs font-bold text-slate-500">{card.collection}</p>
-                </button>
-              ))}
-              {tradeCards.length === 0 ? (
-                <p className="text-sm font-bold leading-6 text-slate-400">
-                  Mark cards as For Trade to make them appear in matching and public coordination.
-                </p>
-              ) : null}
-            </div>
-          </ProfilePanel>
-
-          <ProfilePanel title="Roster cleanup">
-            <div className="grid gap-2">
-              <MarketplaceSignal label="Source links" value={`${withLinks}/${cards.length}`} />
-              <MarketplaceSignal label="Storage locations" value={`${cards.length - missingStorage}/${cards.length}`} />
-              <MarketplaceSignal label="Card numbers" value={`${cards.length - missingNumbers}/${cards.length}`} />
-            </div>
-          </ProfilePanel>
+          <div className="hidden grid-cols-[minmax(260px,1.5fr)_110px_110px_110px_110px_120px] gap-3 border-b border-white/10 px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 lg:grid">
+            <span>Card</span>
+            <span>Cost</span>
+            <span>Ask/value</span>
+            <span>Sold</span>
+            <span>Profit</span>
+            <span>Status</span>
+          </div>
+          <div className="divide-y divide-white/5">
+            {filteredInventory.slice(0, 80).map((card) => (
+              <SellerInventoryRow
+                key={card.id}
+                accent={accent}
+                card={card}
+                onOpen={() => onOpenCard(card)}
+              />
+            ))}
+            {filteredInventory.length === 0 ? (
+              <div className="p-6">
+                <ProfileEmptyState text="No cards match this seller filter yet." />
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
       <aside className="grid h-fit gap-4 xl:sticky xl:top-20">
         <CollectorProfileCard accent={accent} cardCount={cards.length} collectionName={collectionName} />
-        <ProfilePanel title="Quick actions">
+        <ProfilePanel title="Seller actions">
           <div className="grid gap-2">
             <button onClick={onExport} disabled={cards.length === 0} className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10 disabled:opacity-40">
-              Export collection
+              Export inventory
             </button>
             <button onClick={onOpenCollection} className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10">
-              Review gallery
+              Edit cards
             </button>
           </div>
         </ProfilePanel>
-        <ProfilePanel title="Next tools">
+        <ProfilePanel title="Data hygiene">
           <div className="grid gap-2">
-            {["Spreadsheet import", "eBay links", "Cert lookup"].map((item) => (
+            <MarketplaceSignal label="Source links" value={`${withLinks}/${cards.length}`} />
+            <MarketplaceSignal label="Storage locations" value={`${cards.length - missingStorage}/${cards.length}`} />
+            <MarketplaceSignal label="Card numbers" value={`${cards.length - missingNumbers}/${cards.length}`} />
+            <MarketplaceSignal label="Trade ready" value={tradeCards.length.toString()} />
+          </div>
+        </ProfilePanel>
+        <ProfilePanel title="Premium roadmap">
+          <div className="grid gap-2">
+            {["eBay listing sync", "Fee calculator", "Payout reports", "Tax lot export"].map((item) => (
               <div key={item} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-bold text-slate-300">
                 {item}
               </div>
@@ -2958,29 +2988,125 @@ function CollectorWorkbench({
   );
 }
 
-function WorkbenchMetric({ label, value }: { label: string; value: string }) {
+function WorkbenchMetric({
+  label,
+  tone = "neutral",
+  value,
+}: {
+  label: string;
+  tone?: "neutral" | "good" | "bad";
+  value: string;
+}) {
+  const valueClass =
+    tone === "good"
+      ? "text-emerald-300"
+      : tone === "bad"
+        ? "text-red-300"
+        : "text-white";
+
   return (
     <div className="rounded-2xl border border-white/10 bg-[#151b24] p-4 shadow-xl">
-      <p className="text-3xl font-black text-white">{value}</p>
+      <p className={`text-2xl font-black ${valueClass}`}>{value}</p>
       <p className="mt-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
     </div>
   );
 }
 
-function GradingDecision({ card }: { card: Card }) {
-  const cost = moneyValue(card.purchasePrice) + moneyValue(card.gradingFee);
+function SellerInventoryRow({
+  accent,
+  card,
+  onOpen,
+}: {
+  accent: string;
+  card: Card;
+  onOpen: () => void;
+}) {
+  const cost = cardAllInCost(card);
   const value = cardValue(card);
-  const decision = !cost || !value ? "Review" : value > cost * 1.5 ? "Good" : value > cost ? "Close" : "Skip";
-  const color =
-    decision === "Good"
-      ? "text-emerald-300"
-      : decision === "Close"
-        ? "text-yellow-300"
-        : decision === "Skip"
-          ? "text-red-300"
-          : "text-slate-300";
+  const sold = moneyValue(card.salePrice);
+  const profit = sellerProfit(card);
+  const saleStatus = card.saleStatus ?? "Holding";
 
-  return <span className={`text-xs font-black ${color}`}>{decision}</span>;
+  return (
+    <button
+      onClick={onOpen}
+      className="grid w-full gap-3 px-4 py-3 text-left transition hover:bg-white/[0.035] lg:grid-cols-[minmax(260px,1.5fr)_110px_110px_110px_110px_120px] lg:items-center"
+    >
+      <div className="grid min-w-0 grid-cols-[46px_minmax(0,1fr)] items-center gap-3">
+        <CleanCardThumb accent={accent} card={card} />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-black text-white">{card.player}</p>
+          <p className="mt-0.5 truncate text-xs font-bold text-slate-400">{cardSubtitle(card)}</p>
+          <div className="mt-1 flex flex-wrap gap-1.5 lg:hidden">
+            <SellerStatusBadge status={saleStatus} />
+            {card.sourceName ? (
+              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black text-slate-400">
+                {card.sourceName}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <SellerMoneyBlock label="Cost" value={cost} />
+      <SellerMoneyBlock label="Ask/value" value={value} />
+      <SellerMoneyBlock label="Sold" muted={!sold} value={sold} />
+      <SellerMoneyBlock label="Profit" tone={profit >= 0 ? "good" : "bad"} value={profit} />
+      <div className="hidden lg:block">
+        <SellerStatusBadge status={saleStatus} />
+        <p className="mt-1 truncate text-[10px] font-bold text-slate-500">
+          {card.acquiredFrom || card.collection}
+        </p>
+      </div>
+    </button>
+  );
+}
+
+function SellerMoneyBlock({
+  label,
+  muted = false,
+  tone = "neutral",
+  value,
+}: {
+  label: string;
+  muted?: boolean;
+  tone?: "neutral" | "good" | "bad";
+  value: number;
+}) {
+  const toneClass =
+    muted
+      ? "text-slate-600"
+      : tone === "good"
+        ? "text-emerald-300"
+        : tone === "bad"
+          ? "text-red-300"
+          : "text-white";
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/15 px-3 py-2 lg:block lg:border-0 lg:bg-transparent lg:p-0">
+      <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 lg:hidden">
+        {label}
+      </span>
+      <span className={`text-sm font-black ${toneClass}`}>
+        {formatMoney(value)}
+      </span>
+    </div>
+  );
+}
+
+function SellerStatusBadge({ status }: { status: NonNullable<Card["saleStatus"]> }) {
+  const className =
+    status === "Sold"
+      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+      : status === "Listed"
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+        : "border-white/10 bg-white/5 text-slate-300";
+
+  return (
+    <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${className}`}>
+      {status}
+    </span>
+  );
 }
 
 function LookupLink({ href, label }: { href: string; label: string }) {
@@ -4038,7 +4164,7 @@ function TileCardImage({
       className="object-cover"
       style={{
         objectPosition: imagePosition(card),
-        transform: `${imageScaleTransform()} ${imageRotateTransform(card)}`,
+        transform: `${imageScaleTransform(card)} ${imageRotateTransform(card)}`,
         transformOrigin: imagePosition(card),
       }}
     />
@@ -4193,7 +4319,7 @@ function EditedCardImage({
       className={fit === "contain" ? "object-contain" : "object-cover"}
       style={{
         objectPosition: imagePosition(card),
-        transform: `${imageScaleTransform()} ${imageRotateTransform(card)}`,
+        transform: `${imageScaleTransform(card)} ${imageRotateTransform(card)}`,
         transformOrigin: imagePosition(card),
       }}
     />
@@ -4366,8 +4492,8 @@ function imagePosition(card: Card) {
   return `${card.imageX ?? 50}% ${card.imageY ?? 50}%`;
 }
 
-function imageScaleTransform() {
-  return "scale(1)";
+function imageScaleTransform(card: Card) {
+  return `scale(${(card.imageZoom ?? 100) / 100})`;
 }
 
 function imageRotateTransform(card: Card) {
@@ -4420,6 +4546,21 @@ function cardValue(card: Card) {
   return moneyValue(card.estimatedValue) || moneyValue(card.purchasePrice);
 }
 
+function cardAllInCost(card: Card) {
+  return moneyValue(card.purchasePrice) + moneyValue(card.gradingFee);
+}
+
+function sellerProfit(card: Card) {
+  const basis = cardAllInCost(card);
+  const saleStatus = card.saleStatus ?? "Holding";
+
+  if (saleStatus === "Sold") {
+    return moneyValue(card.salePrice) - basis;
+  }
+
+  return cardValue(card) - basis;
+}
+
 function cardSubtitle(card: Card) {
   const year = cleanMetaPart(card.year);
   const brand = cleanMetaPart(card.brand);
@@ -4442,7 +4583,8 @@ function compactMetaPart(value: string, previousParts: string[]) {
   );
   const tokens = value.split(/\s+/).filter(Boolean);
   const compacted = tokens.filter((token) => !previousTokens.has(token.toLowerCase()));
-  const deduped = dedupeAdjacentWords(compacted.length ? compacted : tokens);
+  if (tokens.length && compacted.length === 0) return "";
+  const deduped = dedupeAdjacentWords(compacted);
 
   return deduped.join(" ").trim();
 }

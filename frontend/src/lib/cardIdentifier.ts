@@ -67,9 +67,10 @@ function fieldsFromAspects(aspects: Record<string, string>): Record<FieldName, I
   const grader = firstAspect(aspects, ["Professional Grader", "Grader"]);
   const gradeValue = firstAspect(aspects, ["Grade"]);
   const normalizedGrade = normalizeAspectGrade(grader, gradeValue);
+  const brandValue = firstAspect(aspects, ["Manufacturer", "Brand"]);
 
   return {
-    brand: aspectField(firstAspect(aspects, ["Manufacturer", "Brand"])),
+    brand: aspectField(brandValue),
     cardNumber: aspectField(firstAspect(aspects, ["Card Number", "Card #", "Card No."])),
     certNumber: aspectField(
       firstAspect(aspects, [
@@ -92,7 +93,7 @@ function fieldsFromAspects(aspects: Record<string, string>): Record<FieldName, I
     player: aspectField(
       cleanPlayerName(firstAspect(aspects, ["Player/Athlete", "Player", "Athlete"])),
     ),
-    set: aspectField(cleanSetName(firstAspect(aspects, ["Set", "Product"]))),
+    set: aspectField(cleanSetName(firstAspect(aspects, ["Set", "Product"]), brandValue)),
     sport: aspectField(firstAspect(aspects, ["Sport"])),
     team: aspectField(firstAspect(aspects, ["Team"])),
     year: aspectField(cleanYearValue(firstAspect(aspects, ["Season", "Year", "Year Manufactured"]))),
@@ -227,12 +228,14 @@ function cleanAspectValue(value: string) {
     : clean;
 }
 
-function cleanSetName(value: string) {
-  return cleanAspectValue(value)
+function cleanSetName(value: string, brand = "") {
+  const clean = cleanAspectValue(value)
     .replace(/\b(19[8-9]\d|20[0-3]\d)(?:-\d{2})?\b/g, "")
     .replace(/\s+/g, " ")
     .replace(/^\s*[-:]+\s*/, "")
     .trim();
+
+  return removeDuplicateSetBrand(clean, brand);
 }
 
 function cleanYearValue(value: string) {
@@ -310,11 +313,30 @@ function setFromTitle(title: string, brand: string) {
   const explicitSet = setPatterns.find((set) =>
     set.keywords.some((keyword) => upperTitle.includes(keyword)),
   )?.name;
-  const value =
+  const value = removeDuplicateSetBrand(
     explicitSet ??
-    (brand && /\bchrome\s+black\b/i.test(title) ? `${brand} Black` : brand);
+      (brand && /\bchrome\s+black\b/i.test(title) ? `${brand} Black` : brand),
+    brand,
+  );
 
   return titleField(value, explicitSet ? 0.86 : value ? 0.68 : 0);
+}
+
+function removeDuplicateSetBrand(value: string, brand: string) {
+  const cleanValue = value.trim();
+  const cleanBrand = brand.trim();
+  if (!cleanValue || !cleanBrand) return cleanValue;
+
+  const normalizedValue = normalizeComparableValue(cleanValue);
+  const normalizedBrand = normalizeComparableValue(cleanBrand);
+  if (normalizedValue === normalizedBrand) return "";
+
+  if (normalizedValue.startsWith(`${normalizedBrand} `)) {
+    const remainder = cleanValue.slice(cleanBrand.length).trim();
+    return remainder.length ? remainder : "";
+  }
+
+  return cleanValue;
 }
 
 function playerFromTitle(
