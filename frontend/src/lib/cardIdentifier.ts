@@ -68,6 +68,7 @@ function fieldsFromAspects(aspects: Record<string, string>): Record<FieldName, I
   const gradeValue = firstAspect(aspects, ["Grade"]);
   const normalizedGrade = normalizeAspectGrade(grader, gradeValue);
   const brandValue = firstAspect(aspects, ["Manufacturer", "Brand"]);
+  const setValue = firstAspect(aspects, ["Set", "Product"]);
 
   return {
     brand: aspectField(brandValue),
@@ -83,17 +84,19 @@ function fieldsFromAspects(aspects: Record<string, string>): Record<FieldName, I
     grade: aspectField(normalizedGrade.grade),
     gradingCompany: aspectField(normalizedGrade.gradingCompany),
     parallel: aspectField(
-      firstAspect(aspects, [
-        "Parallel/Variety",
-        "Parallel",
-        "Variety",
-        "Insert",
-      ]),
+      cleanParallelName(
+        firstAspect(aspects, [
+          "Parallel/Variety",
+          "Parallel",
+          "Variety",
+          "Insert",
+        ]),
+      ),
     ),
     player: aspectField(
       cleanPlayerName(firstAspect(aspects, ["Player/Athlete", "Player", "Athlete"])),
     ),
-    set: aspectField(cleanSetName(firstAspect(aspects, ["Set", "Product"]), brandValue)),
+    set: aspectField(cleanSetName(setValue, brandValue)),
     sport: aspectField(firstAspect(aspects, ["Sport"])),
     team: aspectField(firstAspect(aspects, ["Team"])),
     year: aspectField(cleanYearValue(firstAspect(aspects, ["Season", "Year", "Year Manufactured"]))),
@@ -156,6 +159,11 @@ function chooseFieldValue(
 ) {
   if (!aspectFieldValue.value) return parsedFieldValue;
   if (!parsedFieldValue.value) return aspectFieldValue;
+
+  if (parsedFieldValue.confidence >= 0.82 && isMoreSpecificValue(parsedFieldValue.value, aspectFieldValue.value)) {
+    return parsedFieldValue;
+  }
+
   if (!valuesConflict(aspectFieldValue.value, parsedFieldValue.value)) return aspectFieldValue;
 
   const titleTrustFields: FieldName[] = ["brand", "cardNumber", "parallel", "set", "year"];
@@ -164,6 +172,19 @@ function chooseFieldValue(
   }
 
   return aspectFieldValue;
+}
+
+function isMoreSpecificValue(candidate: string, existing: string) {
+  const candidateValue = normalizeComparableValue(candidate);
+  const existingValue = normalizeComparableValue(existing);
+
+  return Boolean(
+    candidateValue &&
+      existingValue &&
+      candidateValue !== existingValue &&
+      candidateValue.includes(existingValue) &&
+      candidateValue.split(" ").length > existingValue.split(" ").length,
+  );
 }
 
 function valuesConflict(left: string, right: string) {
@@ -236,6 +257,18 @@ function cleanSetName(value: string, brand = "") {
     .trim();
 
   return removeDuplicateSetBrand(clean, brand);
+}
+
+function cleanParallelName(value: string) {
+  const clean = cleanAspectValue(value)
+    .replace(/\bchrome\s+(refractor|mojo refractor|mojo)\b/gi, "$1")
+    .replace(/\bmojo\b(?!\s*refractor)/gi, "Mojo Refractor")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return /^(base|none|n\/a|na|null|undefined|not specified|unknown)$/i.test(clean)
+    ? ""
+    : clean;
 }
 
 function cleanYearValue(value: string) {
