@@ -5,7 +5,7 @@ import { checkRateLimit, requestIdentifier } from "@/lib/rate-limit";
 type CompSource = "active";
 type ApiSource = "active";
 type Confidence = "high" | "medium" | "low";
-type NearMatchReason = "outlier_high" | "outlier_low";
+type NearMatchReason = "outlier_high" | "outlier_low" | "parallel_mismatch";
 
 type CardFields = {
   brand: string;
@@ -116,7 +116,7 @@ export async function GET(request: Request) {
       comps: filtered.comps
         .sort((a, b) => b.endDate.localeCompare(a.endDate))
         .slice(0, 6),
-      nearMatches: filtered.nearMatches,
+      nearMatches: [...filtered.nearMatches, ...filteredActive.nearMatches].slice(0, 12),
     } satisfies CompResponse);
   } catch (error) {
     return NextResponse.json(
@@ -137,8 +137,9 @@ function buildSmartQuery(fields: CardFields) {
   const parallel = isBaseParallel(fields.parallel) ? "" : fields.parallel;
   const cardNumber = normalizeCardNumber(fields.cardNumber);
   const baseHint = isBaseCard(fields) && !cardNumber ? "Base" : "";
+  const autoHint = hasTag(fields, "Auto") ? "Auto" : "";
   const words = cleanQueryText(
-    [fields.year, identity, fields.player, cardNumber || baseHint, grade, parallel]
+    [fields.year, identity, fields.player, cardNumber || baseHint, autoHint, grade, parallel]
       .filter(Boolean)
       .join(" "),
   )
@@ -164,8 +165,9 @@ function buildSearchQueries(fields: CardFields) {
 function buildFallbackQuery(fields: CardFields) {
   const identity = compactIdentityPhrase(fields);
   const keyParallel = keyParallelPhrase(fields.parallel);
+  const autoHint = hasTag(fields, "Auto") ? "Auto" : "";
   const words = cleanQueryText(
-    [fields.year, identity, fields.player, keyParallel].filter(Boolean).join(" "),
+    [fields.year, identity, fields.player, autoHint, keyParallel].filter(Boolean).join(" "),
   )
     .split(" ")
     .filter(Boolean);
@@ -188,8 +190,9 @@ function buildCompactNumberQuery(fields: CardFields) {
 function buildVariantQuery(fields: CardFields) {
   const identity = compactIdentityPhrase(fields);
   const variant = distinctiveParallelTokens(fields.parallel).join(" ");
+  const autoHint = hasTag(fields, "Auto") ? "Auto" : "";
   const words = cleanQueryText(
-    [fields.year, identity, fields.player, variant].filter(Boolean).join(" "),
+    [fields.year, identity, fields.player, autoHint, variant].filter(Boolean).join(" "),
   )
     .split(" ")
     .filter(Boolean);
@@ -202,8 +205,14 @@ function bestIdentityPhrase(fields: CardFields) {
   const combined = `${fields.brand} ${set}`.toLowerCase();
 
   if (combined.includes("topps chrome black")) return "Topps Chrome Black";
+  if (combined.includes("topps chrome ufc")) return "Topps Chrome UFC";
+  if (combined.includes("topps now")) return "Topps Now";
+  if (combined.includes("panini prizm club world cup")) return "Panini Prizm Club World Cup";
+  if (combined.includes("club world cup")) return "Panini Prizm Club World Cup";
+  if (combined.includes("bowman sterling")) return "Bowman Sterling";
   if (combined.includes("upper deck mvp")) return "Upper Deck MVP";
   if (combined.includes("bowman chrome mega box")) return "Bowman Chrome Mega Box";
+  if (combined.includes("bowman chrome prospects")) return "Bowman Chrome Prospects";
   if (combined.includes("bowman chrome")) return "Bowman Chrome";
   if (combined.includes("bowman draft")) return "Bowman Draft";
   if (combined.includes("topps chrome")) return "Topps Chrome";
@@ -297,15 +306,30 @@ function removeOutliers(comps: RawComp[]) {
 }
 
 function filterRelevantComps(comps: RawComp[], fields: CardFields) {
-  const filtered = comps.filter((comp) => isRelevantComp(comp.title, fields));
+  const filtered: RawComp[] = [];
+  const nearMatches: CompResponse["nearMatches"] = [];
+
+  for (const comp of comps) {
+    if (isRelevantComp(comp.title, fields)) {
+      filtered.push(comp);
+    } else if (isParallelNearMatch(comp.title, fields)) {
+      nearMatches.push({
+        title: comp.title,
+        price: comp.price,
+        url: comp.url,
+        reason: "parallel_mismatch",
+      });
+    }
+  }
 
   return {
     comps: filtered,
-    filteredOut: comps.length - filtered.length,
+    filteredOut: comps.length - filtered.length - nearMatches.length,
+    nearMatches,
   };
 }
 
-function isRelevantComp(title: string, fields: CardFields) {
+function isRelevantComp(title: string, fields: CardFields, options: { allowParallelMismatch?: boolean } = {}) {
   const lowerTitle = title.toLowerCase();
   const normalizedTitle = normalizeForMatch(title);
   const playerTokens = normalizeForMatch(fields.player)
@@ -322,6 +346,12 @@ function isRelevantComp(title: string, fields: CardFields) {
   if (setTokens.length && !setTokens.every((token) => normalizedTitle.includes(token))) {
     return false;
   }
+  if (cardCodeFamilyConflict(normalizedTitle, cardNumber)) {
+    return false;
+  }
+  if (cardNumber && hasMismatchedInsertCardCode(title, cardNumber)) {
+    return false;
+  }
   if (cardNumber && !titleHasCardNumber(normalizedTitle, cardNumber) && hasCardNumberSignal(title)) {
     return false;
   }
@@ -332,19 +362,33 @@ function isRelevantComp(title: string, fields: CardFields) {
   if (isBaseParallel(fields.parallel) && hasNonBaseParallel(normalizedTitle)) {
     return false;
   }
+  if (hasTag(fields, "Auto") && !hasAutoSignal(normalizedTitle)) {
+    return false;
+  }
   if (!hasTag(fields, "Auto") && hasAutoSignal(normalizedTitle)) return false;
   if (!hasTag(fields, "Patch") && hasPatchSignal(normalizedTitle)) {
+    return false;
+  }
+  if (hasTag(fields, "Numbered") && !titleMatchesPrintRun(title, fields.parallel)) {
     return false;
   }
   if (!hasTag(fields, "Numbered") && hasNumberedSignal(lowerTitle)) return false;
 
   if (!isBaseParallel(fields.parallel)) {
-    if (!titleMatchesParallel(normalizedTitle, fields.parallel)) {
+    if (!options.allowParallelMismatch && !titleMatchesParallel(normalizedTitle, fields.parallel)) {
       return false;
     }
   }
 
   return true;
+}
+
+function isParallelNearMatch(title: string, fields: CardFields) {
+  if (isBaseParallel(fields.parallel)) return false;
+
+  const normalizedTitle = normalizeForMatch(title);
+  return !titleMatchesParallel(normalizedTitle, fields.parallel) &&
+    isRelevantComp(title, fields, { allowParallelMismatch: true });
 }
 
 function isBaseCard(fields: CardFields) {
@@ -383,8 +427,32 @@ function titleHasCardNumber(normalizedTitle: string, cardNumber: string) {
   return new RegExp(`(^|\\s)${escaped.join("\\s+")}(\\s|$)`, "i").test(normalizedTitle);
 }
 
+function cardCodeFamilyConflict(normalizedTitle: string, cardNumber: string) {
+  const code = normalizeCardNumber(cardNumber).toLowerCase();
+  if (!code) return false;
+  if (titleHasCardNumber(normalizedTitle, code)) return false;
+
+  if (code.startsWith("bst-")) {
+    return !normalizedTitle.includes("sterling") || normalizedTitle.includes("mega box");
+  }
+  if (code.startsWith("bcp-")) {
+    return normalizedTitle.includes("sterling") || normalizedTitle.includes("mega box");
+  }
+  if (code.startsWith("cpa-")) {
+    return !normalizedTitle.includes("auto") && !normalizedTitle.includes("autograph") && !normalizedTitle.includes("cpa");
+  }
+  if (code.startsWith("bav-")) {
+    return !normalizedTitle.includes("ufc") || (!normalizedTitle.includes("auto") && !normalizedTitle.includes("autograph"));
+  }
+  if (code.startsWith("jp")) {
+    return !normalizedTitle.includes("topps now") && !normalizedTitle.includes("wbc") && !normalizedTitle.includes("team japan");
+  }
+
+  return false;
+}
+
 function hasCardNumberSignal(rawTitle: string) {
-  return /#\s*[a-z]{0,6}-?\d+[a-z]?|\bcard\s*(?:no\.?|number|#)\s*[a-z]{0,6}-?\d+[a-z]?\b/i.test(
+  return /#\s*[a-z0-9]{1,8}(?:-[a-z0-9]{1,8})?|\bcard\s*(?:no\.?|number|#)?\s*[a-z0-9]{1,8}(?:-[a-z0-9]{1,8})?\b/i.test(
     rawTitle,
   );
 }
@@ -404,6 +472,13 @@ function keyParallelPhrase(parallel: string) {
   if (normalized.includes("red") && normalized.includes("variation")) return "Red Variation";
   if (normalized.includes("rookie") && normalized.includes("variation")) return "Rookie Variation";
   if (normalized.includes("mega") && normalized.includes("mojo")) return "Mega Mojo";
+  if (normalized.includes("silver") && normalized.includes("glitter")) return "Silver Glitter";
+  if (normalized.includes("green") && normalized.includes("lava")) return "Green Lava";
+  if (normalized.includes("pink") && normalized.includes("holo")) return "Pink Holo";
+  if (normalized.includes("speckle")) return "Speckle";
+  if (normalized.includes("sparkle")) return "Sparkle";
+  if (normalized.includes("green")) return "Green";
+  if (normalized.includes("laser")) return "Laser";
   if (normalized.includes("mojo")) return "Mojo";
   if (normalized.includes("eastern stars")) return "Eastern Stars";
   if (normalized.includes("western stars")) return "Western Stars";
@@ -422,7 +497,30 @@ function distinctiveParallelTokens(parallel: string) {
   }
   if (normalized.includes("mega")) tokens.add("mega");
   if (normalized.includes("mojo")) tokens.add("mojo");
+  if (normalized.includes("glitter")) tokens.add("glitter");
+  if (normalized.includes("lava")) tokens.add("lava");
+  if (normalized.includes("sapphire")) tokens.add("sapphire");
+  if (normalized.includes("foil")) tokens.add("foil");
+  if (normalized.includes("holo")) tokens.add("holo");
+  if (normalized.includes("prizm")) tokens.add("prizm");
   if (normalized.includes("red")) tokens.add("red");
+  if (normalized.includes("silver")) tokens.add("silver");
+  if (normalized.includes("green")) tokens.add("green");
+  if (normalized.includes("gold")) tokens.add("gold");
+  if (normalized.includes("blue")) tokens.add("blue");
+  if (normalized.includes("pink")) tokens.add("pink");
+  if (normalized.includes("orange")) tokens.add("orange");
+  if (normalized.includes("purple")) tokens.add("purple");
+  if (normalized.includes("aqua")) tokens.add("aqua");
+  if (normalized.includes("laser")) tokens.add("laser");
+  if (normalized.includes("speckle")) tokens.add("speckle");
+  if (normalized.includes("sparkle")) tokens.add("sparkle");
+  if (normalized.includes("cracked") && normalized.includes("ice")) {
+    tokens.add("cracked");
+    tokens.add("ice");
+  }
+  const printRun = normalized.match(/\b(\d{1,5})\b/)?.[1];
+  if (printRun && Number(printRun) < 10000) tokens.add(printRun);
   if (normalized.includes("variation") || normalized.includes("variations")) tokens.add("variation");
   if (normalized.includes("logo")) tokens.add("logo");
   if (normalized.includes("eastern")) tokens.add("eastern");
@@ -437,12 +535,27 @@ function conflictingParallelTokens(parallel: string) {
   const conflicts = new Set<string>();
 
   if (!normalized.includes("mojo")) conflicts.add("mojo");
+  if (!normalized.includes("glitter")) conflicts.add("glitter");
+  if (!normalized.includes("lava")) conflicts.add("lava");
+  if (!normalized.includes("sapphire")) conflicts.add("sapphire");
+  if (!normalized.includes("foil")) conflicts.add("foil");
+  if (!normalized.includes("holo")) conflicts.add("holo");
+  if (!normalized.includes("laser")) conflicts.add("laser");
+  if (!normalized.includes("speckle")) conflicts.add("speckle");
+  if (!normalized.includes("sparkle")) conflicts.add("sparkle");
   if (!normalized.includes("shield")) conflicts.add("shield");
   if (!normalized.includes("variation") && !normalized.includes("variations")) {
     conflicts.add("variation");
     conflicts.add("variations");
   }
   if (!normalized.includes("red")) conflicts.add("red");
+  if (!normalized.includes("green")) conflicts.add("green");
+  if (!normalized.includes("gold")) conflicts.add("gold");
+  if (!normalized.includes("blue")) conflicts.add("blue");
+  if (!normalized.includes("pink")) conflicts.add("pink");
+  if (!normalized.includes("orange")) conflicts.add("orange");
+  if (!normalized.includes("purple")) conflicts.add("purple");
+  if (!normalized.includes("aqua")) conflicts.add("aqua");
 
   return Array.from(conflicts);
 }
@@ -453,19 +566,19 @@ function hasMultiCardSignal(rawTitle: string, normalizedTitle: string) {
   }
 
   if (/\s[&+]\s/.test(rawTitle)) return true;
-  if (/\b(sterling|bonus|bonus card|multi card)\b/.test(normalizedTitle)) return true;
+  if (/\b(bonus|bonus card|multi card)\b/.test(normalizedTitle)) return true;
 
   return false;
 }
 
 function hasNonBaseParallel(normalizedTitle: string) {
-  return /\b(superfractor|refractor|mojo|silver|gold|blue|red|orange|purple|pink|green|aqua|holo|rainbow|cracked ice|shimmer|disco|hyper|sepia|xfractor|x fractor|speckle|wave|lava|sapphire|atomic|variation|logo)\b/.test(
+  return /\b(superfractor|refractor|mojo|silver|glitter|gold|blue|red|orange|purple|pink|green|aqua|holo|foil|rainbow|cracked ice|shimmer|disco|hyper|sepia|xfractor|x fractor|speckle|sparkle|wave|lava|sapphire|atomic|variation|logo|laser)\b/.test(
     normalizedTitle,
   );
 }
 
 function hasAutoSignal(normalizedTitle: string) {
-  return /\b(auto|autograph|signed|redemption|cba|certified autograph)\b/.test(normalizedTitle);
+  return /\b(auto|autograph|signed|redemption|cba|cpa|certified autograph)\b/.test(normalizedTitle);
 }
 
 function hasPatchSignal(normalizedTitle: string) {
@@ -476,6 +589,13 @@ function hasNumberedSignal(lowerTitle: string) {
   return /\b1\s*of\s*1\b|\b1\/1\b|\/\s*\d{1,4}\b|\bnumbered\b|\bserial numbered\b|\bprinting plate\b|\bsuperfractor\b/.test(
     lowerTitle,
   );
+}
+
+function titleMatchesPrintRun(rawTitle: string, parallel: string) {
+  const printRun = parallel.match(/\/\s*(\d{1,5})\b/)?.[1];
+  if (!printRun) return true;
+
+  return new RegExp(`(?:/|\\bof\\s*)${printRun}\\b|\\b\\d+\\s*/\\s*${printRun}\\b`, "i").test(rawTitle);
 }
 
 function hasBaseMismatchSignal(rawTitle: string, normalizedTitle: string, cardNumber: string) {
@@ -494,7 +614,7 @@ function hasInsertSignal(normalizedTitle: string) {
 }
 
 function hasMismatchedInsertCardCode(rawTitle: string, cardNumber: string) {
-  const insertCode = rawTitle.match(/#\s*([a-z]{1,6}-\d{1,5})\b|\b([a-z]{1,6}-\d{1,5})\b/i);
+  const insertCode = rawTitle.match(/#\s*([a-z0-9]{1,8}(?:-[a-z0-9]{1,8})?)\b|\b([a-z]{1,8}-[a-z0-9]{1,8})\b/i);
   if (!insertCode) return false;
 
   const foundCode = normalizeCardNumber(insertCode[1] ?? insertCode[2] ?? "");
@@ -563,16 +683,31 @@ function cleanQueryText(value: string) {
 }
 
 function normalizeFields(fields: CardFields): CardFields {
+  const cardNumber = normalizeCardNumber(normalizeEmptyish(fields.cardNumber));
+  const inferred = inferIdentityFromCardNumber(cardNumber);
+  const brand = normalizeEmptyish(fields.brand);
+  const set = normalizeEmptyish(fields.set);
+
   return {
-    brand: normalizeEmptyish(fields.brand),
-    cardNumber: normalizeCardNumber(normalizeEmptyish(fields.cardNumber)),
+    brand: inferred.brand || brand,
+    cardNumber,
     grade: normalizeEmptyish(fields.grade),
     parallel: normalizeEmptyish(fields.parallel),
     player: cleanPlayer(fields.player),
-    set: normalizeEmptyish(fields.set),
+    set: inferred.set || set,
     tags: normalizeEmptyish(fields.tags),
     year: normalizeEmptyish(fields.year),
   };
+}
+
+function inferIdentityFromCardNumber(cardNumber: string) {
+  if (cardNumber.startsWith("bst-")) return { brand: "Bowman Sterling", set: "" };
+  if (cardNumber.startsWith("bcp-")) return { brand: "Bowman Chrome", set: "Prospects" };
+  if (cardNumber.startsWith("cpa-")) return { brand: "Bowman Chrome", set: "Prospect Autographs" };
+  if (cardNumber.startsWith("bav-")) return { brand: "Topps Chrome", set: "UFC" };
+  if (cardNumber.startsWith("jp")) return { brand: "Topps Now", set: "WBC" };
+
+  return { brand: "", set: "" };
 }
 
 function normalizeEmptyish(value: string) {
@@ -584,7 +719,7 @@ function normalizeEmptyish(value: string) {
 
 function cleanPlayer(value: string) {
   return cleanQueryText(value)
-    .replace(/\b(rc|rookie|auto|autograph|patch|refractor|chrome|black|base)\b/gi, " ")
+    .replace(/\b(rc|rookie|auto|autograph|patch|refractor|chrome|black|base|prospect|prospects|1st|first)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 }

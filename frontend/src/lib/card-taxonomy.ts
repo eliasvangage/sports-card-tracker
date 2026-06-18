@@ -135,6 +135,9 @@ export const majorTeams: TeamRecord[] = [
 
 export function teamFromText(value: string) {
   const lower = value.toLowerCase();
+  if (/\breal madrid\b/.test(lower)) return "Real Madrid";
+  if (/\bteam japan\b/.test(lower)) return "Team Japan";
+
   const match = majorTeams.find((team) =>
     [team.name, ...(team.aliases ?? [])].some((name) =>
       lower.includes(name.toLowerCase()),
@@ -153,11 +156,16 @@ export function sportFromText(value: string) {
   );
 
   if (team) return team.sport;
+  if (/\b(ufc|mma|ultimate fighting|flyweight|bantamweight|featherweight|lightweight|welterweight|middleweight|light heavyweight|heavyweight|strawweight)\b/.test(lower)) {
+    return "MMA";
+  }
+  if (/\b(f1|formula 1|formula one|grand prix|motorsport|racing)\b/.test(lower)) return "F1";
   if (/(nba|basketball)\b/.test(lower)) return "Basketball";
   if (/(mlb|baseball)\b/.test(lower)) return "Baseball";
   if (/(nfl|football)\b/.test(lower)) return "Football";
   if (/(nhl|hockey)\b/.test(lower)) return "Hockey";
   if (/(soccer|fifa|uefa|premier league|football club)\b/.test(lower)) return "Soccer";
+  if (/\breal madrid\b|\bclub world cup\b/.test(lower)) return "Soccer";
   if (/(pokemon|pok[eé]mon|tcg|charizard|pikachu)\b/.test(lower)) return "Pokemon";
   if (/(magic the gathering|mtg|planeswalker)\b/.test(lower)) return "Magic";
 

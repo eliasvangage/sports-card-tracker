@@ -1,4 +1,4 @@
-import { sportFromText, teamFromText } from "@/lib/card-taxonomy";
+import { majorTeams, sportFromText, teamFromText } from "@/lib/card-taxonomy";
 
 export type IdentifiedField = {
   confidence: number;
@@ -122,6 +122,7 @@ function fieldsFromTitle(title: string): Record<FieldName, IdentifiedField> {
     grade: grade.grade.value,
     parallel: parallel.value,
     set: set.value,
+    team,
     year: year.value,
   });
 
@@ -160,7 +161,12 @@ function chooseFieldValue(
   if (!aspectFieldValue.value) return parsedFieldValue;
   if (!parsedFieldValue.value) return aspectFieldValue;
 
-  if (parsedFieldValue.confidence >= 0.82 && isMoreSpecificValue(parsedFieldValue.value, aspectFieldValue.value)) {
+  const titleSpecificityFields: FieldName[] = ["brand", "cardNumber", "parallel", "set", "year"];
+  if (
+    titleSpecificityFields.includes(key) &&
+    parsedFieldValue.confidence >= 0.82 &&
+    isMoreSpecificValue(parsedFieldValue.value, aspectFieldValue.value)
+  ) {
     return parsedFieldValue;
   }
 
@@ -305,9 +311,22 @@ function parallelFromTitle(upperTitle: string) {
     parallel.keywords.some((keyword) => upperTitle.includes(keyword)),
   );
   const printRun = printRunFromTitle(upperTitle);
-  const value = [match?.name ?? "", printRun].filter(Boolean).join(" ");
+  const inferred = inferNumberedParallel(match?.name ?? "", printRun, upperTitle);
+  const value = [inferred, printRun].filter(Boolean).join(" ");
 
   return titleField(value, value ? 0.86 : 0);
+}
+
+function inferNumberedParallel(parallel: string, printRun: string, upperTitle: string) {
+  if (
+    printRun === "/299" &&
+    /\b(BOWMAN|BOWMAN CHROME|BCP-)/.test(upperTitle) &&
+    (!parallel || parallel === "Refractor")
+  ) {
+    return "Speckle Refractor";
+  }
+
+  return parallel;
 }
 
 function gradeFromTitle(title: string) {
@@ -328,9 +347,10 @@ function yearFromTitle(title: string) {
 
 function cardNumberFromTitle(title: string) {
   const value =
-    title.match(/#\s*([A-Z]{0,6}-?\d+[A-Z]?)\b/i)?.[1] ??
-    title.match(/\b(?:card\s*(?:no\.?|number|#)\s*)([A-Z]{0,6}-?\d+[A-Z]?)\b/i)?.[1] ??
-    title.match(/\b([A-Z]{1,6}-\d{1,5}[A-Z]?)\b/i)?.[1] ??
+    title.match(/#\s*([A-Z0-9]{1,8}(?:-[A-Z0-9]{1,8})?)\b/i)?.[1] ??
+    title.match(/\b(?:card\s*(?:no\.?|number|#)?\s*)((?=[A-Z0-9-]*\d)[A-Z0-9]{1,8}(?:-[A-Z0-9]{1,8})?)\b/i)?.[1] ??
+    title.match(/\b(?:club world cup|world cup)\s+([A-Z0-9]{1,8})\s+(?=silver|gold|red|blue|green|pink|orange|purple|black|white|glitter|prizm|refractor|ssp|sp|$)/i)?.[1] ??
+    title.match(/\b([A-Z]{1,8}-[A-Z0-9]{1,8})\b/i)?.[1] ??
     "";
 
   return titleField(value, value ? 0.9 : 0);
@@ -343,7 +363,8 @@ function certNumberFromTitle(title: string) {
 
 function setFromTitle(title: string, brand: string) {
   const upperTitle = ` ${title.toUpperCase()} `;
-  const explicitSet = setPatterns.find((set) =>
+  const archivedSet = archivedSetFromTitle(upperTitle);
+  const explicitSet = archivedSet || setPatterns.find((set) =>
     set.keywords.some((keyword) => upperTitle.includes(keyword)),
   )?.name;
   const value = removeDuplicateSetBrand(
@@ -353,6 +374,29 @@ function setFromTitle(title: string, brand: string) {
   );
 
   return titleField(value, explicitSet ? 0.86 : value ? 0.68 : 0);
+}
+
+function archivedSetFromTitle(upperTitle: string) {
+  const has = (pattern: RegExp) => pattern.test(upperTitle);
+
+  if (has(/\bTOPPS CHROME\b/) && has(/\bUFC\b/) && has(/\bFIRED UP\b/)) return "Topps Chrome UFC Fired Up";
+  if (has(/\bTOPPS CHROME\b/) && has(/\bUFC\b/)) return "Topps Chrome UFC";
+  if (has(/\bTOPPS NOW\b/) && has(/\bNHL STICKERS?\b/)) return "Topps Now NHL Stickers";
+  if (has(/\bTOPPS NOW\b/) && (has(/\bWBC\b/) || has(/\bTEAM JAPAN\b/))) return "Topps Now WBC";
+  if (has(/\bTOPPS NOW\b/)) return "Topps Now";
+  if (has(/\bBOWMAN STERLING\b/)) return "Bowman Sterling";
+  if (has(/\bPANINI PRIZM\b/) && has(/\bCLUB WORLD CUP\b/)) return "Panini Prizm Club World Cup";
+  if (has(/\bTOPPS SERIES 1\b/)) return "Series 1";
+  if (has(/\bTOPPS SERIES 2\b/)) return "Series 2";
+  if (has(/\bBOWMAN CHROME MEGA BOX\b/) || (has(/\bBOWMAN\b/) && has(/\bMEGA BOX\b/))) {
+    return "Bowman Chrome Mega Box";
+  }
+  if (has(/\bBOWMAN CHROME\b/) && (has(/\bPROSPECTS?\b/) || has(/\bBCP-/))) {
+    return "Bowman Chrome Prospects";
+  }
+  if (has(/\bBOWMAN BASEBALL\b/)) return "Bowman Baseball";
+
+  return "";
 }
 
 function removeDuplicateSetBrand(value: string, brand: string) {
@@ -381,6 +425,7 @@ function playerFromTitle(
     grade: string;
     parallel: string;
     set: string;
+    team: string;
     year: string;
   },
 ) {
@@ -390,11 +435,16 @@ function playerFromTitle(
     known.set,
     known.parallel,
     known.grade,
+    known.team,
+    teamAliasNoise(known.team),
+    teamAliasNoiseFromTaxonomy(known.team),
     known.certNumber,
     known.cardNumber ? `#?\\s*${escapeRegExp(known.cardNumber)}` : "",
     "\\/\\d{1,5}",
     "\\bPSA\\b|\\bBGS\\b|\\bSGC\\b|\\bCSG\\b|\\bHGA\\b|\\bCGC\\b",
     tagNoisePattern,
+    editionNoisePattern,
+    weightClassNoisePattern,
     hypePattern,
     parallelNoisePattern,
   ]
@@ -402,6 +452,8 @@ function playerFromTitle(
     .join("|");
   const cleaned = stripEmoji(title)
     .replace(new RegExp(noise, "gi"), " ")
+    .replace(/\bteam\s+(japan|usa|canada|mexico|dominican republic|puerto rico|korea)\b/gi, " ")
+    .replace(/\b(club world cup|world cup|wbc)\b/gi, " ")
     .replace(/[^\w\s.'-]/g, " ")
     .replace(/\b\d+\b/g, " ")
     .replace(/\s+/g, " ")
@@ -419,11 +471,31 @@ function playerFromTitle(
   return titleField(player, confidence);
 }
 
+function teamAliasNoise(team: string) {
+  const parts = team.split(" ").filter(Boolean);
+  if (parts.length < 2) return "";
+
+  return `\\b${escapeRegExp(parts.at(-1) ?? "")}\\b`;
+}
+
+function teamAliasNoiseFromTaxonomy(team: string) {
+  const record = majorTeams.find((item) => item.name === team);
+  const aliases = [record?.name, ...(record?.aliases ?? [])]
+    .filter(Boolean)
+    .map((alias) => `\\b${escapeRegExp(alias ?? "")}\\b`);
+
+  return aliases.join("|");
+}
+
 function detectSport(title: string, team: string) {
   const explicit = sportFromText(`${title} ${team}`);
   const lower = title.toLowerCase();
 
   if (explicit) return explicit;
+  if (/\b(ufc|mma|ultimate fighting|flyweight|bantamweight|featherweight|lightweight|welterweight|middleweight|light heavyweight|heavyweight|strawweight)\b/.test(lower)) {
+    return "MMA";
+  }
+  if (/\b(f1|formula 1|formula one|grand prix|motorsport|racing)\b/.test(lower)) return "F1";
   if (/\b(nba|basketball|hoops|court)\b/.test(lower)) return "Basketball";
   if (/\b(nfl|football|gridiron)\b/.test(lower)) return "Football";
   if (/\b(nhl|hockey|puck)\b/.test(lower)) return "Hockey";
@@ -459,7 +531,7 @@ function hasSerialNumberSignal(title: string) {
 function cleanPlayerName(value: string) {
   return stripEmoji(value)
     .replace(/[;,/|]+/g, " ")
-    .replace(/\b(sapphire|chrome|bowman|topps|panini|select|prizm|rookie|card)\b/gi, " ")
+    .replace(/\b(sapphire|chrome|bowman|topps|panini|select|prizm|rookie|prospect|prospects|card|1st|first)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -482,10 +554,12 @@ function escapeRegExp(value: string) {
 
 const brandMap = [
   { name: "Bowman Chrome", keywords: [" BOWMAN CHROME "] },
+  { name: "Bowman Sterling", keywords: [" BOWMAN STERLING "] },
   { name: "Bowman Draft", keywords: [" BOWMAN DRAFT "] },
   { name: "Bowman", keywords: [" BOWMAN "] },
   { name: "Topps Chrome", keywords: [" TOPPS CHROME "] },
   { name: "Topps Heritage", keywords: [" TOPPS HERITAGE "] },
+  { name: "Topps Now", keywords: [" TOPPS NOW "] },
   { name: "Topps", keywords: [" TOPPS "] },
   { name: "National Treasures", keywords: [" NATIONAL TREASURES ", " NT "] },
   { name: "Immaculate", keywords: [" IMMACULATE "] },
@@ -531,7 +605,16 @@ const parallelMap = [
   },
   { name: "Red Variation Refractor", keywords: [" RED VARIATION REFRACTOR ", " RED VARIATIONS REFRACTOR "] },
   { name: "Mega Box Mojo Refractor", keywords: [" MEGA BOX MOJO REFRACTOR ", " MEGA MOJO REFRACTOR "] },
-  { name: "Mojo Refractor", keywords: [" MOJO REFRACTOR "] },
+  { name: "Mojo Refractor", keywords: [" CHROME MOJO ", " MOJO REFRACTOR ", " MOJO "] },
+  { name: "Red White Blue Refractor", keywords: [" RED WHITE BLUE REFRACTOR ", " RWB REFRACTOR "] },
+  { name: "Pink Holo Foil", keywords: [" PINK HOLO FOIL ", " PINK HOLO "] },
+  { name: "Silver Glitter Prizm", keywords: [" SILVER GLITTER PRIZM ", " SILVER GLITTER "] },
+  { name: "Green Lava Refractor", keywords: [" GREEN LAVA REFRACTOR ", " GREEN LAVA "] },
+  { name: "Speckle Refractor", keywords: [" SPECKLE REFRACTOR ", " SPARKLE REFRACTOR ", " SPECKLE ", " SPARKLE "] },
+  { name: "Green Refractor", keywords: [" GREEN REFRACTOR "] },
+  { name: "Laser Refractor", keywords: [" LASER REFRACTOR "] },
+  { name: "Cracked Ice Refractor", keywords: [" CRACKED ICE REFRACTOR "] },
+  { name: "Sapphire", keywords: [" SAPPHIRE "] },
   { name: "Eastern Stars", keywords: [" EASTERN STARS "] },
   { name: "Western Stars", keywords: [" WESTERN STARS "] },
   { name: "Superfractor /1", keywords: [" SUPERFRACTOR "] },
@@ -557,11 +640,18 @@ const parallelMap = [
 
 const setPatterns = [
   { name: "Topps Chrome Black", keywords: [" TOPPS CHROME BLACK ", " CHROME BLACK "] },
+  { name: "Topps Chrome UFC", keywords: [" TOPPS CHROME UFC ", " CHROME UFC "] },
   { name: "Topps Chrome", keywords: [" TOPPS CHROME "] },
   { name: "Topps Heritage", keywords: [" TOPPS HERITAGE "] },
+  { name: "Topps Now NHL Stickers", keywords: [" TOPPS NOW NHL STICKERS ", " TOPPS NOW STICKERS "] },
+  { name: "Topps Now", keywords: [" TOPPS NOW "] },
   { name: "Bowman Chrome Mega Box", keywords: [" BOWMAN CHROME MEGA BOX ", " BOWMAN MEGA BOX "] },
+  { name: "Bowman Chrome Prospects", keywords: [" BOWMAN CHROME PROSPECTS ", " BOWMAN CHROME PROSPECT ", " BCP-"] },
   { name: "Bowman Chrome", keywords: [" BOWMAN CHROME "] },
+  { name: "Bowman Sterling", keywords: [" BOWMAN STERLING "] },
+  { name: "Bowman Baseball", keywords: [" BOWMAN BASEBALL "] },
   { name: "Bowman Draft", keywords: [" BOWMAN DRAFT "] },
+  { name: "Panini Prizm Club World Cup", keywords: [" PANINI PRIZM CLUB WORLD CUP ", " PRIZM CLUB WORLD CUP "] },
   { name: "National Treasures", keywords: [" NATIONAL TREASURES "] },
   { name: "SP Authentic", keywords: [" SP AUTHENTIC "] },
   { name: "Stadium Club", keywords: [" STADIUM CLUB "] },
@@ -578,18 +668,57 @@ const setPatterns = [
 
 const tagNoisePattern =
   "\\bRC\\b|\\bROOKIE\\b|\\bROOKIE CARD\\b|\\bAUTO\\b|\\bAUTOGRAPH\\b|\\bPATCH\\b|\\bSP\\b|\\bSSP\\b|\\bRPA\\b";
+const editionNoisePattern =
+  "\\b1ST\\b|\\b1ST BOWMAN\\b|\\b1ST EDITION\\b|\\bFIRST BOWMAN\\b|\\bFIRST EDITION\\b";
+const weightClassNoisePattern =
+  "\\bFLYWEIGHT\\b|\\bBANTAMWEIGHT\\b|\\bFEATHERWEIGHT\\b|\\bLIGHTWEIGHT\\b|\\bWELTERWEIGHT\\b|\\bMIDDLEWEIGHT\\b|\\bLIGHT HEAVYWEIGHT\\b|\\bHEAVYWEIGHT\\b|\\bSTRAWWEIGHT\\b";
 const hypePattern =
   "\\bRARE\\b|\\bHOT\\b|\\bFIRE\\b|\\bINVEST\\b|\\bINVESTMENT\\b|\\bGEM\\b|\\bMINT\\b|\\bFREE SHIP\\b|\\bWOW\\b";
 const parallelNoisePattern =
-  "\\bSUPERFRACTOR\\b|\\bREFRACTOR\\b|\\bSILVER\\b|\\bGOLD\\b|\\bBLUE\\b|\\bRED\\b|\\bORANGE\\b|\\bPURPLE\\b|\\bPINK\\b|\\bGREEN\\b|\\bAQUA\\b|\\bHOLO\\b|\\bRAINBOW\\b|\\bCRACKED ICE\\b|\\bSHIMMER\\b|\\bDISCO\\b|\\bHYPER\\b";
+  "\\bSUPERFRACTOR\\b|\\bREFRACTOR\\b|\\bSILVER\\b|\\bGLITTER\\b|\\bGOLD\\b|\\bBLUE\\b|\\bRED\\b|\\bWHITE\\b|\\bORANGE\\b|\\bPURPLE\\b|\\bPINK\\b|\\bGREEN\\b|\\bAQUA\\b|\\bHOLO\\b|\\bFOIL\\b|\\bRAINBOW\\b|\\bCRACKED ICE\\b|\\bSHIMMER\\b|\\bDISCO\\b|\\bHYPER\\b|\\bMOJO\\b|\\bLAVA\\b|\\bPRIZM\\b|\\bSAPPHIRE\\b";
 
 const playerStopWords = new Set([
   "base",
   "black",
   "blue",
+  "bowman",
   "card",
   "chrome",
+  "club",
+  "cup",
+  "eastern",
+  "f1",
+  "fired",
+  "flyweight",
+  "bantamweight",
+  "featherweight",
+  "lightweight",
+  "welterweight",
+  "middleweight",
+  "heavyweight",
+  "strawweight",
+  "formula",
+  "insert",
+  "japan",
   "jays",
+  "mvp",
+  "nhl",
+  "now",
+  "prospect",
+  "prospects",
+  "real",
+  "madrid",
+  "signatures",
+  "stars",
   "rookie",
+  "stickers",
+  "team",
+  "topps",
   "toronto",
+  "panini",
+  "upper",
+  "deck",
+  "ufc",
+  "wbc",
+  "world",
 ]);
