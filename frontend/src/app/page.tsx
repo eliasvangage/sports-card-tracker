@@ -4,6 +4,7 @@ import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "re
 import Link from "next/link";
 import Image from "next/image";
 import { SoldComps } from "@/components/SoldComps";
+import { mergeEbayImportCards, parseEbayReportCsv, type EbayCsvImportCard } from "@/lib/ebayCsv";
 import { getStorageUsageMB } from "@/lib/imageCompressor";
 
 type ThemeName = "Arena" | "Chrome" | "Hardwood";
@@ -60,6 +61,30 @@ type Card = {
   acquiredAt?: string;
   targetPrice?: string;
   isChase?: boolean;
+  ebayItemNumber?: string;
+  ebayOrderNumber?: string;
+  ebaySku?: string;
+  ebayQuantity?: number;
+  ebaySoldQuantity?: number;
+  ebayWatchers?: number;
+  ebayBids?: number;
+  ebayCurrency?: string;
+  ebayListingFormat?: string;
+  ebayCondition?: string;
+  ebayListedAt?: string;
+  ebayListingEndsAt?: string;
+  ebayDaysActive?: number;
+  ebayPromoted?: boolean;
+  ebayBuyerUsername?: string;
+  ebaySaleDate?: string;
+  ebayPaidOnDate?: string;
+  ebayShipByDate?: string;
+  ebayShippedOnDate?: string;
+  ebayShippingService?: string;
+  ebayTrackingNumber?: string;
+  ebayShippingCharged?: string;
+  ebayOrderTotal?: string;
+  ebayCollectedTax?: string;
 };
 
 type CollectorProfile = {
@@ -68,6 +93,28 @@ type CollectorProfile = {
   avatarInitials: string;
   favoritePCs: string[];
   publicCollections: string[];
+};
+
+type EbayStoreListing = {
+  title: string;
+  imageUrl: string;
+  itemWebUrl: string;
+  price: string;
+  currency: string;
+  condition: string;
+  player: string;
+  sport: string;
+  team: string;
+  year: string;
+  brand: string;
+  set: string;
+  cardNumber: string;
+  parallel: string;
+  grade: string;
+  gradingCompany: string;
+  certNumber: string;
+  tags: string[];
+  sourceConfidence: number;
 };
 
 const cardTags: CardTag[] = ["Rookie", "Auto", "Patch", "Numbered", "Favorite"];
@@ -381,6 +428,30 @@ export default function Home() {
       "acquiredFrom",
       "acquiredAt",
       "sourceUrl",
+      "ebayItemNumber",
+      "ebayOrderNumber",
+      "ebaySku",
+      "ebayQuantity",
+      "ebaySoldQuantity",
+      "ebayWatchers",
+      "ebayBids",
+      "ebayCurrency",
+      "ebayListingFormat",
+      "ebayCondition",
+      "ebayListedAt",
+      "ebayListingEndsAt",
+      "ebayDaysActive",
+      "ebayPromoted",
+      "ebayBuyerUsername",
+      "ebaySaleDate",
+      "ebayPaidOnDate",
+      "ebayShipByDate",
+      "ebayShippedOnDate",
+      "ebayShippingService",
+      "ebayTrackingNumber",
+      "ebayShippingCharged",
+      "ebayOrderTotal",
+      "ebayCollectedTax",
       "tags",
       "notes",
     ];
@@ -438,6 +509,82 @@ export default function Home() {
     localStorage.setItem("cardroster.cards", JSON.stringify(nextCards));
     setSelectedId(chaseCard.id);
     setNewChasePlayer("");
+  }
+
+  function importEbayStoreListings(listings: EbayStoreListing[], importCollection: string) {
+    const collection = importCollection.trim() || "eBay Inventory";
+    const existingSourceUrls = new Set(savedCards.map((card) => card.sourceUrl).filter(Boolean));
+    const importedCards = listings
+      .filter((listing) => listing.itemWebUrl && !existingSourceUrls.has(listing.itemWebUrl))
+      .map((listing): Card => ({
+        id: crypto.randomUUID(),
+        player: listing.player || listing.title || "Unnamed Card",
+        sport: normalizeSportName(listing.sport),
+        team: listing.team || "Unknown Team",
+        year: listing.year || "Unknown Year",
+        brand: listing.brand || "Unknown Brand",
+        set: listing.set || "Base Set",
+        cardNumber: listing.cardNumber,
+        parallel: listing.parallel,
+        status: "For Trade",
+        grade: listing.grade || "Raw",
+        gradingCompany: listing.gradingCompany,
+        certNumber: listing.certNumber,
+        color: activeTheme.accent,
+        collection,
+        estimatedValue: listing.price,
+        saleStatus: "Listed",
+        imageUrl: listing.imageUrl,
+        sourceUrl: listing.itemWebUrl,
+        sourceName: "eBay store",
+        frameStyle: frameStyle,
+        borderStyle: borderStyle,
+        tags: sanitizeTags(listing.tags as CardTag[]),
+        imageX: 50,
+        imageY: 50,
+        imageZoom: 100,
+        imageRotation: 0,
+        notes: [
+          listing.condition ? `eBay condition: ${listing.condition}` : "",
+          listing.sourceConfidence ? `Import confidence: ${listing.sourceConfidence}%` : "",
+        ].filter(Boolean).join(" | "),
+      }));
+
+    if (!importedCards.length) return 0;
+
+    const nextCards = [...importedCards, ...savedCards];
+    const nextCollections = Array.from(new Set([...savedCollections, collection]));
+    setSavedCards(nextCards);
+    setSavedCollections(nextCollections);
+    setSelectedId(importedCards[0].id);
+    localStorage.setItem("cardroster.cards", JSON.stringify(nextCards));
+    localStorage.setItem("cardroster.collections", JSON.stringify(nextCollections));
+    return importedCards.length;
+  }
+
+  function importEbayCsvCards(importedCards: EbayCsvImportCard[], importCollection: string) {
+    const collection = importCollection.trim() || "eBay Inventory";
+    const normalizedCards = importedCards.map((card) => ({
+      ...card,
+      collection,
+      color: card.color || activeTheme.accent,
+      frameStyle: readFrameStyle(card.frameStyle ?? null),
+      borderStyle: readBorderStyle(card.borderStyle ?? null),
+      tags: sanitizeTags(card.tags),
+    }));
+    const result = mergeEbayImportCards(savedCards as EbayCsvImportCard[], normalizedCards);
+    const nextCards = result.cards as Card[];
+    const nextCollections = Array.from(new Set([...savedCollections, collection]));
+
+    setSavedCards(nextCards);
+    setSavedCollections(nextCollections);
+    setSelectedId(normalizedCards[0]?.id ?? selectedId);
+    localStorage.setItem("cardroster.cards", JSON.stringify(nextCards));
+    localStorage.setItem("cardroster.collections", JSON.stringify(nextCollections));
+    return {
+      created: result.created,
+      updated: result.updated,
+    };
   }
 
   return (
@@ -562,6 +709,8 @@ export default function Home() {
           accent={activeTheme.accent}
           cards={allCards}
           collectionName={collectionName}
+          onImportEbayCsvCards={importEbayCsvCards}
+          onImportEbayListings={importEbayStoreListings}
           onExport={exportCards}
           onOpenCard={(card) => setDetailId(card.id)}
           onOpenCollection={() => setActiveSection("Collection")}
@@ -2824,6 +2973,8 @@ function CollectorWorkbench({
   accent,
   cards,
   collectionName,
+  onImportEbayCsvCards,
+  onImportEbayListings,
   onExport,
   onOpenCard,
   onOpenCollection,
@@ -2831,6 +2982,8 @@ function CollectorWorkbench({
   accent: string;
   cards: Card[];
   collectionName: string;
+  onImportEbayCsvCards: (cards: EbayCsvImportCard[], importCollection: string) => { created: number; updated: number };
+  onImportEbayListings: (listings: EbayStoreListing[], importCollection: string) => number;
   onExport: () => void;
   onOpenCard: (card: Card) => void;
   onOpenCollection: () => void;
@@ -2840,11 +2993,42 @@ function CollectorWorkbench({
   const [displayCurrency, setDisplayCurrency] = useState<"CAD" | "USD">("CAD");
   const [feeRate, setFeeRate] = useState(13);
   const [shippingCost, setShippingCost] = useState(0);
+  const [ebaySeller, setEbaySeller] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("cardroster.ebaySeller") ?? "";
+  });
+  const [ebayMarketplace, setEbayMarketplace] = useState<"EBAY_US" | "EBAY_CA" | "EBAY_GB" | "EBAY_AU" | "EBAY_DE">(() => {
+    if (typeof window === "undefined") return "EBAY_US";
+    return readMarketplace(localStorage.getItem("cardroster.ebayMarketplace"));
+  });
+  const [ebaySearch, setEbaySearch] = useState("");
+  const [ebayImportLimit, setEbayImportLimit] = useState(25);
+  const [storeListings, setStoreListings] = useState<EbayStoreListing[]>([]);
+  const [isStoreLoading, setIsStoreLoading] = useState(false);
+  const [storeMessage, setStoreMessage] = useState("");
+  const [importCollection, setImportCollection] = useState("eBay Inventory");
+  const [csvImportMessage, setCsvImportMessage] = useState("");
+  const [csvImportPreview, setCsvImportPreview] = useState<{
+    activeListings: number;
+    orders: number;
+    cards: EbayCsvImportCard[];
+    files: string[];
+    skippedRows: number;
+  }>({ activeListings: 0, orders: 0, cards: [], files: [], skippedRows: 0 });
   const money = (value: number) => formatMoney(value, displayCurrency);
+  const duplicateStoreListings = useMemo(() => {
+    const sourceUrls = new Set(cards.map((card) => card.sourceUrl).filter(Boolean));
+    return storeListings.filter((listing) => sourceUrls.has(listing.itemWebUrl));
+  }, [cards, storeListings]);
+  const newStoreListings = useMemo(() => {
+    const sourceUrls = new Set(cards.map((card) => card.sourceUrl).filter(Boolean));
+    return storeListings.filter((listing) => listing.itemWebUrl && !sourceUrls.has(listing.itemWebUrl));
+  }, [cards, storeListings]);
   const sellerStats = useMemo(() => {
     const tradeCards = cards.filter((card) => card.status === "For Trade");
     const listedCards = cards.filter((card) => card.saleStatus === "Listed");
     const soldCards = cards.filter((card) => card.saleStatus === "Sold");
+    const unshippedCards = soldCards.filter((card) => card.ebayShipByDate && !card.ebayShippedOnDate);
     const pcCards = cards.filter(isPcVaultCard);
     const sellerCards = cards.filter((card) => !isPcVaultCard(card));
     const activeSellerCards = sellerCards.filter((card) => card.saleStatus !== "Sold");
@@ -2865,6 +3049,7 @@ function CollectorWorkbench({
         0,
       ),
       soldCards,
+      unshippedCards,
       totalCost: sellerCards.reduce((total, card) => total + cardAllInCost(card), 0),
       tradeCards,
       withLinks: cards.filter((card) => card.sourceUrl).length,
@@ -2897,8 +3082,107 @@ function CollectorWorkbench({
     realizedProfit,
     totalCost,
     tradeCards,
+    unshippedCards,
     withLinks,
   } = sellerStats;
+  const averageDaysActive = useMemo(() => {
+    const cardsWithDays = cards
+      .map((card) => card.ebayDaysActive)
+      .filter((days): days is number => typeof days === "number" && Number.isFinite(days));
+
+    if (!cardsWithDays.length) return 0;
+    return Math.round(cardsWithDays.reduce((total, days) => total + days, 0) / cardsWithDays.length);
+  }, [cards]);
+
+  async function loadEbayStore() {
+    const seller = ebaySeller.trim();
+    if (!seller || isStoreLoading) return;
+
+    setIsStoreLoading(true);
+    setStoreMessage("");
+    setStoreListings([]);
+
+    try {
+      const params = new URLSearchParams({
+        seller,
+        marketplace: ebayMarketplace,
+        limit: String(ebayImportLimit),
+      });
+      if (ebaySearch.trim()) params.set("q", ebaySearch.trim());
+
+      const response = await fetch(`/api/ebay/store?${params.toString()}`);
+      const body = await response.json();
+
+      if (!response.ok) {
+        throw new Error(body.error ?? "Unable to import that eBay store.");
+      }
+
+      const listings = Array.isArray(body.listings) ? body.listings as EbayStoreListing[] : [];
+      localStorage.setItem("cardroster.ebaySeller", seller);
+      localStorage.setItem("cardroster.ebayMarketplace", ebayMarketplace);
+      setStoreListings(listings);
+      setStoreMessage(
+        listings.length
+          ? `Found ${listings.length} active listing${listings.length === 1 ? "" : "s"} from ${seller}.`
+          : "No active sports-card listings were returned for that seller.",
+      );
+    } catch (error) {
+      setStoreMessage(error instanceof Error ? error.message : "Unable to load that eBay store.");
+    } finally {
+      setIsStoreLoading(false);
+    }
+  }
+
+  function saveStoreListings() {
+    const importedCount = onImportEbayListings(newStoreListings, importCollection);
+    setStoreMessage(
+      importedCount
+        ? `Saved ${importedCount} listing${importedCount === 1 ? "" : "s"} to ${importCollection || "eBay Inventory"}.`
+        : "Those listings are already in your inventory.",
+    );
+  }
+
+  async function previewEbayCsvFiles(files: FileList | null) {
+    if (!files?.length) return;
+
+    const nextPreview = {
+      activeListings: 0,
+      orders: 0,
+      cards: [] as EbayCsvImportCard[],
+      files: [] as string[],
+      skippedRows: 0,
+    };
+
+    try {
+      for (const file of Array.from(files)) {
+        const text = await file.text();
+        const result = parseEbayReportCsv(text, importCollection, accent);
+        nextPreview.files.push(file.name);
+        nextPreview.cards.push(...result.cards);
+        nextPreview.skippedRows += result.skippedRows;
+        if (result.kind === "activeListings") nextPreview.activeListings += result.cards.length;
+        if (result.kind === "orders") nextPreview.orders += result.cards.length;
+      }
+
+      setCsvImportPreview(nextPreview);
+      setCsvImportMessage(
+        `Ready to import ${nextPreview.cards.length} row${nextPreview.cards.length === 1 ? "" : "s"} from ${nextPreview.files.length} file${nextPreview.files.length === 1 ? "" : "s"}.`,
+      );
+    } catch (error) {
+      setCsvImportPreview({ activeListings: 0, orders: 0, cards: [], files: [], skippedRows: 0 });
+      setCsvImportMessage(error instanceof Error ? error.message : "Unable to read those CSV files.");
+    }
+  }
+
+  function saveEbayCsvPreview() {
+    if (!csvImportPreview.cards.length) return;
+
+    const result = onImportEbayCsvCards(csvImportPreview.cards, importCollection);
+    setCsvImportMessage(
+      `Imported ${result.created} new record${result.created === 1 ? "" : "s"} and updated ${result.updated}.`,
+    );
+    setCsvImportPreview({ activeListings: 0, orders: 0, cards: [], files: [], skippedRows: 0 });
+  }
 
   return (
     <section className="mx-auto grid max-w-[1500px] gap-4 px-4 py-4 sm:px-6 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -2949,11 +3233,13 @@ function CollectorWorkbench({
           </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
           <WorkbenchMetric label="Seller value" value={money(activeValue)} />
           <WorkbenchMetric label="Seller cost" value={money(totalCost)} />
           <WorkbenchMetric label="Revenue" value={money(grossRevenue)} />
           <WorkbenchMetric label="Realized profit" value={money(realizedProfit)} tone={realizedProfit >= 0 ? "good" : "bad"} />
+          <WorkbenchMetric label="Unshipped" value={unshippedCards.length.toString()} tone={unshippedCards.length ? "bad" : "good"} />
+          <WorkbenchMetric label="Avg days active" value={averageDaysActive ? `${averageDaysActive}d` : "-"} />
           <WorkbenchMetric label="PC vault" value={pcCards.length.toString()} />
         </div>
 
@@ -2997,7 +3283,7 @@ function CollectorWorkbench({
             <span>Ask/value</span>
             <span>Sold</span>
             <span>Profit</span>
-            <span>Status</span>
+            <span>Ops</span>
           </div>
           <div className="divide-y divide-white/5">
             {filteredInventory.slice(0, 80).map((card) => (
@@ -3022,6 +3308,194 @@ function CollectorWorkbench({
 
       <aside className="grid h-fit gap-4 xl:sticky xl:top-20">
         <CollectorProfileCard accent={accent} cardCount={cards.length} collectionName={collectionName} />
+        <ProfilePanel title="CSV import desk">
+          <div className="grid gap-3">
+            <div className="rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.02))] p-3">
+              <p className="text-sm font-black text-white">Upload eBay reports</p>
+              <p className="mt-1 text-xs font-bold leading-5 text-slate-400">
+                Drop active listings and all-orders CSVs together to build an inventory and sales ledger.
+              </p>
+              <label
+                className="mt-3 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-white/15 bg-black/20 px-3 py-4 text-center hover:border-white/30 hover:bg-white/[0.04]"
+                style={{ boxShadow: `inset 0 0 32px ${accent}14` }}
+              >
+                <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Choose CSV files
+                </span>
+                <span className="mt-1 text-[11px] font-bold text-slate-500">
+                  Active listings, orders, or both
+                </span>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => void previewEbayCsvFiles(event.target.files)}
+                />
+              </label>
+            </div>
+            <EditField label="Collection name">
+              <input
+                value={importCollection}
+                onChange={(event) => setImportCollection(event.target.value)}
+                className="studio-field"
+              />
+            </EditField>
+            <div className="grid grid-cols-3 gap-2">
+              <MarketplaceSignal label="Listings" value={csvImportPreview.activeListings.toString()} />
+              <MarketplaceSignal label="Orders" value={csvImportPreview.orders.toString()} />
+              <MarketplaceSignal label="Skipped" value={csvImportPreview.skippedRows.toString()} />
+            </div>
+            {csvImportPreview.files.length ? (
+              <div className="grid gap-1">
+                {csvImportPreview.files.map((file) => (
+                  <div key={file} className="truncate rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-[11px] font-bold text-slate-300">
+                    {file}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {csvImportMessage ? (
+              <p className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold leading-5 text-slate-300">
+                {csvImportMessage}
+              </p>
+            ) : null}
+            <button
+              onClick={saveEbayCsvPreview}
+              disabled={csvImportPreview.cards.length === 0}
+              className="h-10 rounded-lg px-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+              style={{ backgroundColor: accent }}
+            >
+              Import {csvImportPreview.cards.length || ""} records
+            </button>
+          </div>
+        </ProfilePanel>
+        <ProfilePanel title="eBay store import">
+          <div className="grid gap-3">
+            <EditField label="Seller username">
+              <input
+                value={ebaySeller}
+                onChange={(event) => setEbaySeller(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void loadEbayStore();
+                }}
+                className="studio-field"
+                placeholder="your-ebay-id"
+              />
+            </EditField>
+            <div className="grid grid-cols-2 gap-2">
+              <EditField label="Marketplace">
+                <select
+                  value={ebayMarketplace}
+                  onChange={(event) => setEbayMarketplace(event.target.value as typeof ebayMarketplace)}
+                  className="studio-field"
+                >
+                  <option value="EBAY_US">US</option>
+                  <option value="EBAY_CA">Canada</option>
+                  <option value="EBAY_GB">UK</option>
+                  <option value="EBAY_AU">Australia</option>
+                  <option value="EBAY_DE">Germany</option>
+                </select>
+              </EditField>
+              <EditField label="Limit">
+                <input
+                  type="number"
+                  min={5}
+                  max={50}
+                  value={ebayImportLimit}
+                  onChange={(event) => setEbayImportLimit(Math.min(50, Math.max(5, Number(event.target.value) || 25)))}
+                  className="studio-field"
+                />
+              </EditField>
+            </div>
+            <EditField label="Optional search">
+              <input
+                value={ebaySearch}
+                onChange={(event) => setEbaySearch(event.target.value)}
+                className="studio-field"
+                placeholder="topps chrome"
+              />
+            </EditField>
+            <EditField label="Save to collection">
+              <input
+                value={importCollection}
+                onChange={(event) => setImportCollection(event.target.value)}
+                className="studio-field"
+              />
+            </EditField>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => void loadEbayStore()}
+                disabled={!ebaySeller.trim() || isStoreLoading}
+                className="h-9 rounded-lg px-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ backgroundColor: accent }}
+              >
+                {isStoreLoading ? "Linking..." : "Link store"}
+              </button>
+              <button
+                onClick={saveStoreListings}
+                disabled={newStoreListings.length === 0}
+                className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Save {newStoreListings.length}
+              </button>
+            </div>
+            {storeMessage ? (
+              <p className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold leading-5 text-slate-300">
+                {storeMessage}
+              </p>
+            ) : null}
+            {storeListings.length ? (
+              <div className="grid max-h-80 gap-2 overflow-y-auto pr-1">
+                {storeListings.slice(0, 12).map((listing) => {
+                  const duplicate = duplicateStoreListings.some((item) => item.itemWebUrl === listing.itemWebUrl);
+                  return (
+                    <a
+                      key={listing.itemWebUrl || listing.title}
+                      href={listing.itemWebUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="grid grid-cols-[44px_minmax(0,1fr)] gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-2 hover:bg-white/[0.06]"
+                    >
+                      <div className="relative h-14 overflow-hidden rounded-md bg-black/30">
+                        {listing.imageUrl ? (
+                          <Image
+                            src={listing.imageUrl}
+                            alt={listing.title || "eBay listing"}
+                            fill
+                            unoptimized
+                            sizes="44px"
+                            className="object-contain"
+                          />
+                        ) : (
+                          <div className="grid h-full place-items-center text-[10px] font-black text-slate-500">
+                            CR
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-black text-white">{listing.player || listing.title}</p>
+                        <p className="mt-0.5 truncate text-[10px] font-bold text-slate-400">
+                          {[listing.year, listing.brand, listing.cardNumber ? `#${listing.cardNumber}` : "", listing.parallel]
+                            .filter(Boolean)
+                            .join(" ")}
+                        </p>
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className="text-[10px] font-black text-emerald-300">{listing.price || "No price"}</span>
+                          {duplicate ? (
+                            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[9px] font-black text-amber-200">
+                              Existing
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        </ProfilePanel>
         <ProfilePanel title="Seller actions">
           <div className="grid gap-2">
             <div className="grid grid-cols-2 gap-2">
@@ -3153,6 +3627,16 @@ function SellerInventoryRow({
           <p className="mt-0.5 truncate text-xs font-bold text-slate-400">{cardSubtitle(card)}</p>
           <div className="mt-1 flex flex-wrap gap-1.5 lg:hidden">
             <SellerStatusBadge status={saleStatus} />
+            {card.ebayDaysActive !== undefined ? (
+              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black text-slate-400">
+                {card.ebayDaysActive}d active
+              </span>
+            ) : null}
+            {card.ebayShipByDate && !card.ebayShippedOnDate ? (
+              <span className="rounded-full border border-red-400/20 bg-red-500/10 px-2 py-0.5 text-[9px] font-black text-red-100">
+                Ship by {card.ebayShipByDate}
+              </span>
+            ) : null}
             {card.sourceName ? (
               <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black text-slate-400">
                 {card.sourceName}
@@ -3173,9 +3657,22 @@ function SellerInventoryRow({
         value={pcCard ? value : profit}
       />
       <div className="hidden lg:block">
-        <SellerStatusBadge status={saleStatus} />
+        <div className="flex flex-wrap gap-1.5">
+          <SellerStatusBadge status={saleStatus} />
+          {card.ebayDaysActive !== undefined ? (
+            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black text-slate-400">
+              {card.ebayDaysActive}d
+            </span>
+          ) : null}
+        </div>
         <p className="mt-1 truncate text-[10px] font-bold text-slate-500">
-          {card.acquiredFrom || card.collection}
+          {card.ebayShipByDate && !card.ebayShippedOnDate
+            ? `Ship by ${card.ebayShipByDate}`
+            : card.ebayShippedOnDate
+              ? `Shipped ${card.ebayShippedOnDate}`
+              : card.ebayWatchers
+                ? `${card.ebayWatchers} watchers`
+                : card.ebayTrackingNumber || card.acquiredFrom || card.collection}
         </p>
       </div>
     </button>
@@ -3565,6 +4062,20 @@ function readFrameStyle(value: string | null): FrameStyle {
   }
 
   return "Card";
+}
+
+function readMarketplace(value: string | null) {
+  if (
+    value === "EBAY_US" ||
+    value === "EBAY_CA" ||
+    value === "EBAY_GB" ||
+    value === "EBAY_AU" ||
+    value === "EBAY_DE"
+  ) {
+    return value;
+  }
+
+  return "EBAY_US";
 }
 
 function readCollectorProfile(value: string | null): CollectorProfile {
@@ -4652,6 +5163,25 @@ function sanitizeTags(tags: CardTag[] | undefined) {
   return (tags ?? []).filter((tag): tag is CardTag =>
     cardTags.includes(tag as CardTag),
   );
+}
+
+function normalizeSportName(value: string) {
+  const clean = value.trim();
+  if (clean === "Pokemon" || clean === "Magic") return "TCG";
+  if (
+    clean === "Baseball" ||
+    clean === "Basketball" ||
+    clean === "Football" ||
+    clean === "Hockey" ||
+    clean === "Soccer" ||
+    clean === "TCG" ||
+    clean === "MMA" ||
+    clean === "F1"
+  ) {
+    return clean;
+  }
+
+  return "Baseball";
 }
 
 function isPremiumCard(card: Card) {
